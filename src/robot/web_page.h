@@ -1,0 +1,226 @@
+#pragma once
+// The driving page served at http://<robot>/ . Self-contained (no internet
+// needed - the robot's own Wi-Fi has none). Protocol: see ControlProtocol.h.
+
+static const char kIndexHtml[] = R"HTML(<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#101418">
+<title>MakerBot</title>
+<style>
+:root{--bg:#101418;--panel:#1a2027;--line:#2a323c;--text:#e8edf2;--dim:#8a96a3;--blue:#3d7bff;
+--green:#2fbf71;--amber:#f2a516;--red:#e5484d}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;height:100dvh;background:var(--bg);color:var(--text);
+font:15px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overscroll-behavior:none}
+body{display:flex;flex-direction:column;user-select:none;-webkit-user-select:none;
+padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+header{display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
+header h1{font-size:16px;margin:0 auto 0 0;font-weight:650}
+.pill{padding:3px 10px;border-radius:99px;background:var(--panel);border:1px solid var(--line);font-size:13px;white-space:nowrap}
+.pill.ok{border-color:var(--green);color:var(--green)}.pill.warn{border-color:var(--amber);color:var(--amber)}
+.pill.bad{border-color:var(--red);color:var(--red)}.pill.info{border-color:var(--blue);color:#9dbcff}
+.banner{margin:10px 14px 0;padding:10px 12px;border-radius:10px;display:flex;gap:10px;align-items:center;justify-content:space-between}
+.banner.warn{background:#3a2c0c;border:1px solid var(--amber)}.banner.bad{background:#3a1416;border:1px solid var(--red)}
+.banner[hidden]{display:none}
+main{flex:1;display:grid;grid-template-columns:1fr;grid-template-rows:minmax(220px,1fr) auto;gap:14px;padding:14px;min-height:0}
+@media (orientation:landscape) and (min-width:600px){main{grid-template-columns:1fr minmax(260px,340px);grid-template-rows:1fr}}
+#stickWrap{position:relative;min-height:0;min-width:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#stick{touch-action:none;display:block}
+#side{display:flex;flex-direction:column;gap:12px;min-height:0;overflow-y:auto}
+.row{display:flex;gap:10px}
+button{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:12px;
+padding:10px 14px;cursor:pointer;touch-action:manipulation}
+button:active{filter:brightness(1.3)}
+.big{flex:1;font-size:20px;font-weight:700;padding:18px 10px;letter-spacing:.04em}
+#arm.armed{background:#14361f;border-color:var(--green);color:#bff3d2}
+#arm.fault{background:#3a1416;border-color:var(--red)}
+#stop{background:var(--red);border-color:#ff7a7e;color:#fff}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+label{display:flex;justify-content:space-between;color:var(--dim);font-size:13px;margin-bottom:6px}
+input[type=range]{width:100%;accent-color:var(--blue);height:28px}
+.wheels{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.wheel{font-size:12px;color:var(--dim);min-width:0}
+.wl{display:flex;justify-content:space-between;gap:6px;white-space:nowrap}
+.wl span:first-child{overflow:hidden;text-overflow:ellipsis}
+.wl span:last-child{color:var(--text);font-variant-numeric:tabular-nums}
+.bar{position:relative;height:12px;background:#0c0f12;border-radius:6px;overflow:hidden;margin-top:4px}
+.bar i{position:absolute;top:0;bottom:0;background:var(--blue);left:50%;width:0}
+.bar b{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--text);left:50%}
+.small{font-size:12px;color:var(--dim)}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;
+opacity:0;transition:opacity .2s;pointer-events:none}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <h1>MakerBot</h1>
+  <span id="conn" class="pill">connecting…</span>
+  <span id="state" class="pill">—</span>
+</header>
+<div id="spectator" class="banner warn" hidden><span>Another device is driving.</span><button id="claim">Take control</button></div>
+<div id="fault" class="banner bad" hidden><span id="faultText"></span></div>
+<main>
+  <section id="stickWrap"><canvas id="stick" aria-label="Drive joystick"></canvas></section>
+  <section id="side">
+    <div class="row">
+      <button id="arm" class="big">ARM</button>
+      <button id="stop" class="big">STOP</button>
+    </div>
+    <div class="card">
+      <label for="lim"><span>Speed limit</span><span id="limVal">–</span></label>
+      <input id="lim" type="range" min="10" max="100" step="5" value="50">
+    </div>
+    <div class="card">
+      <div class="wheels" id="wheels"></div>
+      <div class="small" id="info" style="margin-top:8px"></div>
+    </div>
+    <div class="small">Keyboard: arrows / WASD to drive, Space = STOP, Enter = arm/disarm.</div>
+  </section>
+</main>
+<div id="toast"></div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+let ws = null, myId = 0, owner = false, state = "disarmed", maxMps = 1, names = [];
+let stick = {x: 0, y: 0}, keys = new Set(), limDragging = false, retryMs = 500;
+
+// ---------- connection ----------
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => { retryMs = 500; setPill("conn", "connected", "ok"); };
+  ws.onclose = () => {
+    setPill("conn", "reconnecting…", "bad"); setPill("state", "—", ""); owner = false;
+    setTimeout(connect, retryMs); retryMs = Math.min(retryMs * 2, 4000);
+  };
+  ws.onerror = () => ws.close();
+  ws.onmessage = ev => { try { handle(JSON.parse(ev.data)); } catch (e) {} };
+}
+function send(text) { if (ws && ws.readyState === 1) ws.send(text); }
+
+function handle(m) {
+  if (m.hello !== undefined) { myId = m.hello; maxMps = m.maxMps || 1; names = m.names || []; buildWheels(); return; }
+  if (m.msg) { toast(m.msg); return; }
+  if (m.st === undefined) return;
+  state = m.st; owner = m.own === myId;
+  $("spectator").hidden = owner;
+  const labels = {disarmed: ["DISARMED", "info"], armed: ["ARMED", "ok"], stopping: ["STOPPING", "warn"], fault: ["FAULT", "bad"]};
+  const [txt, cls] = labels[state] || [state, ""];
+  setPill("state", m.link || state !== "armed" ? txt : "ARMED · NO LINK", m.link || state !== "armed" ? cls : "bad");
+  const arm = $("arm");
+  arm.textContent = state === "fault" ? "RESET" : (state === "armed" ? "DISARM" : "ARM");
+  arm.className = "big " + (state === "armed" ? "armed" : state === "fault" ? "fault" : "");
+  arm.disabled = !owner;
+  $("fault").hidden = state !== "fault" && m.hw !== 0;
+  if (m.hw === 0) $("faultText").textContent = "Motor/encoder hardware failed to start - check the serial log.";
+  else if (state === "fault") $("faultText").textContent =
+    `Wheel ${names[m.fw] || m.fw} stalled (blocked or jammed). Clear it, then press RESET.`;
+  if (!limDragging) { $("lim").value = Math.round(m.lim * 100); $("limVal").textContent = `${Math.round(m.lim * 100)}% · ${(m.lim * maxMps).toFixed(2)} m/s`; }
+  (m.w || []).forEach((w, i) => updateWheel(i, w[0], w[1], w[2]));
+  draw();  // knob colour / hint depend on state and ownership
+  $("info").textContent = `top speed ${maxMps.toFixed(2)} m/s` + (m.rssi ? ` · Wi-Fi ${m.rssi} dBm` : "") +
+    ` · loop ${m.loopUs} µs` + (m.ovr ? ` · late ${m.ovr}` : "");
+}
+
+function setPill(id, text, cls) { const e = $(id); e.textContent = text; e.className = "pill " + cls; }
+let toastTimer;
+function toast(t) { const e = $("toast"); e.textContent = t; e.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => e.classList.remove("show"), 2500); }
+
+// ---------- wheel bars ----------
+function buildWheels() {
+  const order = [0, 2, 1, 3].filter(i => i < names.length);  // usually FL FR / RL RR
+  $("wheels").innerHTML = order.map(i =>
+    `<div class="wheel" title="${names[i]}"><div class="wl"><span>${names[i].replace(/^M\d /, "")}</span><span id="wv${i}"></span></div>` +
+    `<div class="bar"><i id="wb${i}"></i><b id="wt${i}"></b></div></div>`).join("");
+}
+function updateWheel(i, target, speed, duty) {
+  const bar = $("wb" + i), tick = $("wt" + i), val = $("wv" + i);
+  if (!bar) return;
+  const f = Math.max(-1, Math.min(1, speed / maxMps)), t = Math.max(-1, Math.min(1, target / maxMps));
+  bar.style.left = (f >= 0 ? 50 : 50 + f * 50) + "%"; bar.style.width = Math.abs(f) * 50 + "%";
+  tick.style.left = `calc(${50 + t * 50}% - 1px)`;
+  val.textContent = `${speed.toFixed(2)} m/s`;
+  val.title = `target ${target.toFixed(2)} m/s, motor duty ${Math.round(duty * 100)}%`;
+}
+
+// ---------- joystick ----------
+const cv = $("stick"), ctx = cv.getContext("2d");
+let activePointer = null;
+function resize() {
+  // Square joystick that fits the space available, up to 420 CSS px.
+  const wrap = $("stickWrap"), side = Math.max(120, Math.min(wrap.clientWidth, wrap.clientHeight, 420));
+  const d = window.devicePixelRatio || 1;
+  cv.style.width = cv.style.height = side + "px";
+  cv.width = cv.height = Math.round(side * d); draw();
+}
+function draw() {
+  const w = cv.width, h = cv.height, cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2 * 0.92, kr = R * 0.28;
+  ctx.clearRect(0, 0, w, h);
+  ctx.lineWidth = Math.max(2, R * 0.012);
+  ctx.strokeStyle = "#2a323c"; ctx.fillStyle = "#151a20";
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy); ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R); ctx.stroke();
+  const live = owner && state === "armed";
+  const kx = cx + stick.x * (R - kr), ky = cy - stick.y * (R - kr);
+  ctx.fillStyle = live ? "#3d7bff" : "#3a4552";
+  ctx.beginPath(); ctx.arc(kx, ky, kr, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#8a96a3"; ctx.font = `${Math.round(R * 0.09)}px system-ui`; ctx.textAlign = "center";
+  ctx.fillText(live ? "" : (owner ? "press ARM to drive" : "watching"), cx, cy + R * 0.62);
+}
+function setFromPointer(e) {
+  const r = cv.getBoundingClientRect(), R = Math.min(r.width, r.height) / 2 * 0.92 * (1 - 0.28);
+  let x = (e.clientX - r.left - r.width / 2) / R, y = -(e.clientY - r.top - r.height / 2) / R;
+  const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
+  stick = {x, y}; draw();
+}
+cv.addEventListener("pointerdown", e => { if (activePointer !== null) return; activePointer = e.pointerId; cv.setPointerCapture(e.pointerId); setFromPointer(e); });
+cv.addEventListener("pointermove", e => { if (e.pointerId === activePointer) setFromPointer(e); });
+const release = e => { if (e.pointerId !== activePointer) return; activePointer = null; stick = {x: 0, y: 0}; draw(); };
+cv.addEventListener("pointerup", release); cv.addEventListener("pointercancel", release); cv.addEventListener("lostpointercapture", release);
+
+// ---------- keyboard ----------
+const keyMap = {ArrowUp: "u", KeyW: "u", ArrowDown: "d", KeyS: "d", ArrowLeft: "l", KeyA: "l", ArrowRight: "r", KeyD: "r"};
+addEventListener("keydown", e => {
+  if (e.code === "Space") { e.preventDefault(); send("S"); return; }
+  if (e.code === "Enter") { e.preventDefault(); $("arm").click(); return; }
+  if (keyMap[e.code]) { e.preventDefault(); keys.add(keyMap[e.code]); keyStick(); }
+});
+addEventListener("keyup", e => { if (keyMap[e.code]) { keys.delete(keyMap[e.code]); keyStick(); } });
+function keyStick() {
+  if (activePointer !== null) return;
+  stick = {x: (keys.has("r") ? 1 : 0) - (keys.has("l") ? 1 : 0), y: (keys.has("u") ? 1 : 0) - (keys.has("d") ? 1 : 0)};
+  draw();
+}
+
+// ---------- buttons ----------
+$("stop").onclick = () => send("S");
+$("arm").onclick = () => {
+  if (!owner) return;
+  if (state === "armed" || state === "stopping" || state === "fault") send("A 0");
+  else send("A 1");
+};
+$("claim").onclick = () => send("C");
+const lim = $("lim");
+lim.addEventListener("pointerdown", () => limDragging = true);
+addEventListener("pointerup", () => limDragging = false);
+lim.addEventListener("input", () => {
+  $("limVal").textContent = `${lim.value}% · ${(lim.value / 100 * maxMps).toFixed(2)} m/s`;
+  send(`L ${(lim.value / 100).toFixed(2)}`);
+});
+
+// Joystick stream = heartbeat. If this page is hidden (phone locked, app
+// switched) the stream stops and the robot halts by itself; we also ask for a
+// gentle stop right away.
+setInterval(() => { if (owner && !document.hidden) send(`D ${stick.x.toFixed(3)} ${stick.y.toFixed(3)}`); }, 50);
+document.addEventListener("visibilitychange", () => { if (document.hidden && owner) send("A 0"); });
+addEventListener("blur", () => { keys.clear(); keyStick(); });
+addEventListener("resize", resize);
+if (window.ResizeObserver) new ResizeObserver(resize).observe($("stickWrap"));
+resize(); connect();
+</script>
+</body>
+</html>
+)HTML";

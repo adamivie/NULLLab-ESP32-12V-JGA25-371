@@ -1,0 +1,7 @@
+{
+  "name": "RobotCore",
+  "version": "1.0.0",
+  "description": "Platform-independent robot logic (speed control, ramping, mixing, protocol). No Arduino dependencies so it can be unit-tested on a PC.",
+  "frameworks": "*",
+  "platforms": "*"
+}
