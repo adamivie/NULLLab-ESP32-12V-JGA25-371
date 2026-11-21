@@ -133,7 +133,7 @@ def _perp(v):
 # ---------------------------------------------------------------------------
 AXIS_Z = -C.BRK_AXIS_FROM_FLANGE
 HALF = C.PLATE_W / 2
-FACE_SCREW_SPACING = 17.0  # bracket face holes (TechMakers drawing)
+FACE_SCREW_SPACING = C.BRK_FACE_SCREW_SPACING
 
 
 def bracket(s, y):
@@ -143,13 +143,13 @@ def bracket(s, y):
     # D-shaped face: straight down to the axis, then a half-circle around it
     face = box(s * (HALF - T), s * HALF, y - r, y + r, AXIS_Z, -T).union(cyl_x(W, s * (HALF - T), s * HALF, y, AXIS_Z))
     b = flange.union(face)
-    b = b.cut(cyl_x(8.0, s * (HALF - T - 1), s * (HALF + 1), y, AXIS_Z))
+    b = b.cut(cyl_x(C.BRK_CENTER_HOLE_D, s * (HALF - T - 1), s * (HALF + 1), y, AXIS_Z))
     for dy in (-FACE_SCREW_SPACING / 2, FACE_SCREW_SPACING / 2):
         b = b.cut(cyl_x(3.2, s * (HALF - T - 1), s * (HALF + 1), y + dy, AXIS_Z))
     for row in C.BRK_HOLE_ROWS:
         for dy in (-C.BRK_HOLE_SPACING / 2, C.BRK_HOLE_SPACING / 2):
             b = b.cut(cyl_z(3.3, s * (HALF - row), y + dy, -T - 1, 1))
-    b = b.cut(cyl_z(9.8, s * (HALF - 17.8), y, -T - 1, 1))
+    b = b.cut(cyl_z(C.BRK_CENTER_HOLE_D, s * (HALF - C.BRK_FLANGE_DEPTH / 2), y, -T - 1, 1))
     return b
 
 
@@ -412,6 +412,7 @@ def main():
     if C.DC_JACK_SIDE != -1:
         sys.exit("full_model.py places the DC jack on the left (DC_JACK_SIDE = -1)")
     parts += battery_and_straps(board_z, dc_jack)
+    parts += C.sensor_parts()
 
     # --- check the REAL board against everything around it -----------------
     problems = []

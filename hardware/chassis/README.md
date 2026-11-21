@@ -15,12 +15,12 @@ A two-deck, laser-cut acrylic chassis:
 | | |
 |---|---|
 | Plates | 2 × 160 × 200 mm, 3 mm acrylic |
-| Footprint | 222 mm wide (over tyres) × 200 mm long |
-| Wheelbase / track | 100 mm / 196 mm (wheel centres): see [why 100 mm](#why-a-100-mm-wheelbase) |
-| Ground clearance | 19 mm (bracket bottoms), 25 mm under the battery |
+| Footprint | 228 mm wide (over tyres) × 200 mm long |
+| Wheelbase / track | 100 mm / 200.5 mm (wheel centres): see [why 100 mm](#why-a-100-mm-wheelbase) |
+| Ground clearance | 20 mm (bracket bottoms), 25 mm under the battery and front ToF bracket |
 | Deck spacing | 40 mm (board plus plugged-in wires, with room to spare) |
 | Battery | 3S LiPo up to ~110 × 34 × 26 mm, strapped under the lower deck |
-| Mass (estimated) | ~1.2 kg, centre of gravity 46 mm above the floor |
+| Mass (estimated) | ~1.3 kg with the sensors, centre of gravity 49 mm above the floor |
 
 ![side view](images/side.png)
 
@@ -74,7 +74,8 @@ python full_model.py      # downloads the board model from NULLLAB's GitHub the 
 | `out/top_plate.svg` / `.dxf` | Laser cutting, upper deck |
 | `out/fit_test_coupon.svg` / `.dxf` | **Cut this first.** A small test piece, see below |
 | `out/cut_sheet_both_plates.svg` | Both plates laid out together for one LightBurn job (needs 330 × 204 mm of material) |
-| `out/print_template_1to1.pdf` | Print at 100 % to check fit on paper before ordering |
+| `out/size_check_24x36.pdf` | **24 × 36 in sheet for a 24-inch plotter:** both plates and the coupon at 1:1 with outlines of the real parts, X and Y scale bars, renders and a checklist (`size_check_poster.py`) |
+| `out/print_template_1to1.pdf` | The same plates on Letter/A4 pages, one per page |
 | `out/chassis_assembly.step` | Full 3D assembly for any CAD program |
 | `viewer.html` | Interactive 3D view (`python3 -m http.server` in this folder, then open `/viewer.html`) |
 | `chassis.py` | Generator for all of the above |
@@ -87,12 +88,15 @@ hairlines, which most laser services expect. Check your service's rules.
 
 ## Before ordering: verify the fit (5 minutes)
 
-The bracket hole pattern comes from a published drawing of a JGA25 bracket,
-not from your actual bracket, so check it:
+The bracket hole pattern comes from the bracket's listing: a 16 mm square of
+M3 holes, centred on a 31 mm flange. This is the correction made in the
+SolidCraft model (`adamivie/jetson-ugv-chassis`, `esp32_bot`). An earlier
+TechMakers drawing put the rows 14 mm apart, and plates cut before this
+change won't fit. Neither source is your actual bracket, so check it:
 
-1. Print `out/print_template_1to1.pdf` at **100 % / "Actual size"**. Measure
-   the 100 mm bar at the bottom. If it isn't exactly 100 mm, your printer
-   scaled the page.
+1. Print `out/size_check_24x36.pdf` on the 24-inch plotter (or
+   `out/print_template_1to1.pdf` on Letter/A4) at **100 % / "Actual size"**.
+   Measure the scale bars. If they aren't exact, the printer scaled the page.
 2. Lay a bracket flange on one of the four slot groups on the bottom-plate
    page. The bracket's bend (outer face) goes on the plate edge. All four
    flange holes should sit inside the slots.
@@ -111,8 +115,9 @@ below).
 
 ## Cut day checklist
 
-1. **Print check:** print `out/print_template_1to1.pdf` at 100 %. Confirm the
-   100 mm bar, then lay a bracket and the Maker-ESP32 on it.
+1. **Print check:** print `out/size_check_24x36.pdf` (24-inch plotter) or
+   `out/print_template_1to1.pdf` (Letter/A4) at 100 %. Confirm the scale bars,
+   then lay a bracket, the Maker-ESP32 and any sensors on their outlines.
 2. **Coupon:** cut `out/fit_test_coupon.svg`. Check that the bracket fits the
    slots, choose the hole size where an M3 screw slides in freely, and measure
    the 40 mm line.
@@ -178,6 +183,12 @@ workflow prefers DXF.
 | 1 | 3S LiPo, ~2200 mAh, ≤ 110 × 34 × 26 mm | or a 12 V pack of similar size |
 | 1 | XT60 (or your battery's plug) to 5.5 × 2.1 mm DC barrel lead | power to the board's DC jack |
 | 1 | **LiPo voltage alarm (buzzer)** on the balance lead | the board can't measure battery voltage, and an over-discharged LiPo is ruined |
+| | *Optional sensors (see [Sensor mounts](#sensor-mounts))* | |
+| 1 | LD06 lidar + 2 × M2.5 screws | top deck |
+| 1 | VL53L5CX board + printed front bracket | front accessory holes |
+| 2 | VL53L0X GY-530 module + 4 × M3 × 6 nylon standoffs | under the front corners |
+| 1 | BNO085 IMU + printed carrier | top deck grid |
+| 1 | INA226 CJMCU-226 + printed carrier | lower deck |
 
 Acrylic cracks if over-tightened. Snug the screws, then stop. Nylon washers
 under screw heads help.
@@ -222,7 +233,7 @@ little torque (about 0.9 kg·cm at stall), so turning is the limiting factor.
 Driving straight needs only a fraction of that.
 
 A shorter wheelbase also has a limit. The robot must not be able to tip over
-nose-first when it brakes hard. With the centre of gravity at 46 mm, the
+nose-first when it brakes hard. With the centre of gravity at 49 mm, the
 tyres must slide before it tips, which needs `(wheelbase / 2) / CoG height`
 above the tyre friction (about 0.8).
 
@@ -230,15 +241,15 @@ above the tyre friction (about 0.8).
 
 | Wheelbase | L / B | Spin torque per wheel | % of stall | Tip margin | |
 |---|---|---|---|---|---|
-| 80 mm | 0.41 | 0.32 kg·cm | 35 % | 1.08 | little margin |
-| 90 mm | 0.46 | 0.36 kg·cm | 40 % | 1.22 | ok |
-| **100 mm** | **0.51** | **0.40 kg·cm** | **44 %** | **1.35** | **chosen** |
-| 110 mm | 0.56 | 0.44 kg·cm | 49 % | 1.49 | ok |
-| 130 mm | 0.66 | 0.52 kg·cm | 57 % | 1.76 | turns sluggishly |
+| 80 mm | 0.40 | 0.34 kg·cm | 38 % | 0.97 | can tip |
+| 90 mm | 0.45 | 0.38 kg·cm | 42 % | 1.10 | little margin |
+| **100 mm** | **0.50** | **0.42 kg·cm** | **47 %** | **1.23** | **chosen** |
+| 110 mm | 0.55 | 0.47 kg·cm | 52 % | 1.36 | weak turning |
+| 130 mm | 0.65 | 0.55 kg·cm | 61 % | 1.61 | turns sluggishly |
 
-With the battery under the deck, 90 mm would also be safe. I kept 100 mm
-because the extra stability margin covers errors in the mass estimates
-(a heavier battery, for example) for only 4 % more turning effort.
+These figures include the sensors: about 1.3 kg total, with the lidar raising
+the centre of gravity to 49 mm. 100 mm is the only wheelbase that keeps both
+turning effort under half of stall and a comfortable tip margin.
 
 How to read it:
 
@@ -269,7 +280,7 @@ Every placement choice was checked against the model (`python chassis.py
 | **Wheelbase 100 mm** | See [why 100 mm](#why-a-100-mm-wheelbase) |
 | **Track 196 mm** | A trade-off, see below |
 
-Sideways roll-over isn't a concern: the roll margin is 2.65 (it would slide
+Sideways roll-over isn't a concern: the roll margin is 2.54 (it would slide
 long before it rolled).
 
 **Track width is the one real trade-off.** A wider track makes turning
@@ -277,10 +288,10 @@ easier, but the robot gets wider:
 
 | Plate width | Track | Overall width | Spin torque per wheel | % of stall |
 |---|---|---|---|---|
-| 140 mm | 176 mm | 202 mm | 0.44 kg·cm | 49 % |
-| **160 mm** | **196 mm** | **222 mm** | **0.40 kg·cm** | **44 %** |
-| 180 mm | 216 mm | 242 mm | 0.36 kg·cm | 40 % |
-| 200 mm | 236 mm | 262 mm | 0.33 kg·cm | 37 % |
+| 140 mm | 180 mm | 208 mm | 0.47 kg·cm | 52 % |
+| **160 mm** | **200.5 mm** | **228 mm** | **0.42 kg·cm** | **47 %** |
+| 180 mm | 220 mm | 248 mm | 0.38 kg·cm | 43 % |
+| 200 mm | 240 mm | 268 mm | 0.35 kg·cm | 39 % |
 
 The motors need at least 126 mm of plate width. The returns diminish: each
 extra 20 mm of width buys only about 4 % of stall torque. 160 mm keeps the
@@ -291,16 +302,32 @@ gear ratio (see above), not the chassis.
 
 ## Why the battery goes underneath
 
-`BATTERY_MOUNT` in `chassis.py` switches between the two layouts. Both pass
-every check:
+`BATTERY_MOUNT` in `chassis.py` switches between two layouts:
 
-| | Centre of gravity | Tip margin |
+| | Centre of gravity | Tip margin | Checks |
+|---|---|---|---|
+| **`"under"` (default):** strapped beneath the lower deck | **49 mm** | **1.23** | pass |
+| `"top"`: strapped on the top deck | 60 mm | 1.00 | fail: hits the lidar and IMU, and could tip |
+
+With the sensors fitted, underneath is the only workable place, and it's still
+easy to swap the battery from below. (Without sensors, `SENSORS = False`, the
+top-deck layout passes too.)
+
+## Sensor mounts
+
+These come from the SolidCraft model (`adamivie/jetson-ugv-chassis`,
+`esp32_bot` @ `b0c8823`) and are checked for collisions like everything else.
+Set `SENSORS = False` in `chassis.py` to leave their holes out.
+
+| Sensor | Where | New holes in the acrylic |
 |---|---|---|
-| **`"under"` (default):** strapped beneath the lower deck | **46 mm** | **1.35** |
-| `"top"`: strapped on the top deck | 58 mm | 1.07 |
+| LD06 360° lidar | Top deck, centre | 2 × M2.5 (2.8 mm) on the diagonal of a 28.2 mm square |
+| VL53L5CX 8×8 ToF | Printed L-bracket at the front, below the lower deck | none: uses the front accessory holes at ±20 mm |
+| 2 × VL53L0X (GY-530) cliff sensors | Under the front corners on 6 mm standoffs | 2 slots each, 19.3 mm apart, slotted ±1 mm (the spacing came from one seller listing, so check your modules) |
+| BNO085 IMU | Printed carrier, rear of the top deck | none: uses top-grid holes at (±10, −60) |
+| INA226 (CJMCU-226) power monitor | Printed carrier beside the battery-lead slot | 2 × M3 at (−66, 24) and (−44, 24) |
 
-Underneath, the robot is much more stable, and the battery is still easy to
-swap from below. Choose `"top"` if you'd rather reach the battery from above.
+The printed carriers and brackets are modelled in the SolidCraft file.
 
 ## Changing the design
 

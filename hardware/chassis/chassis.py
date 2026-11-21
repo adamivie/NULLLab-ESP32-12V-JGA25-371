@@ -42,14 +42,22 @@ STANDOFF_H = 40.0         # M3 hex standoffs between the decks (room to plug wir
 BOARD_STANDOFF_H = 10.0   # nylon M3 standoffs under the Maker-ESP32
 M3_CLEAR = 3.3            # M3 clearance hole (3.2-3.4 typical; see fit coupon)
 
-# JGA25-371 25 mm L-bracket (TechMakers drawing; verify with the fit coupon)
-BRK_FACE_W = 26.5         # bracket width (along Y)
-BRK_FACE_H = 34.0         # face height incl. flange thickness
+# JGA25 25 mm L-bracket, per the bracket's listing (as corrected in the SolidCraft
+# model, adamivie/jetson-ugv-chassis esp32_bot @ b0c8823): 26 x 31 x 33.3 with a
+# rounded end, 10 mm centre holes, flange M3 holes on a 16 mm square centred on
+# the flange. (An earlier TechMakers drawing gave 14 x 16 mm rows - verify yours
+# with the fit coupon.)
+BRK_FACE_W = 26.0         # bracket width (along Y)
+BRK_FACE_H = 33.3         # face height incl. flange thickness
 BRK_T = 3.3               # bracket sheet-metal thickness
 BRK_AXIS_FROM_FLANGE = 20.75  # motor axis to flange outer surface
-BRK_FLANGE_DEPTH = 33.0   # flange length from face outer surface (along X)
-BRK_HOLE_ROWS = (10.85, 24.85)  # flange hole rows, measured inward from face outer surface
-BRK_HOLE_SPACING = 16.0   # flange hole columns (along Y)
+BRK_FLANGE_DEPTH = 31.0   # flange length from face outer surface (along X)
+BRK_HOLE_SQUARE = 16.0    # flange M3 holes: 16 x 16 mm square, centred on the flange
+BRK_HOLE_ROWS = (BRK_FLANGE_DEPTH / 2 - BRK_HOLE_SQUARE / 2,   # rows measured inward from the
+                 BRK_FLANGE_DEPTH / 2 + BRK_HOLE_SQUARE / 2)   # face outer surface: 7.5, 23.5
+BRK_HOLE_SPACING = BRK_HOLE_SQUARE  # flange hole columns (along Y)
+BRK_CENTER_HOLE_D = 10.0  # shaft hole in the face and centre hole in the flange
+BRK_FACE_SCREW_SPACING = 17.0  # gearbox face M3 holes, centre to centre
 BRK_SLOT_EXTRA = 3.0      # slots elongated by this much along X for tolerance
 
 # JGA25-371 1:9.6 gearmotor (listing images)
@@ -59,8 +67,8 @@ ENCODER_L = 5.0           # encoder disc incl. PCB
 CONNECTOR = (8.0, 14.0, 7.0)  # 6-pin header box: along X, along Y, height above can
 PLUG_H = 10.0             # mating plug + wire bend above the header (needs the wire slot)
 MOTOR_END_GAP_MIN = 12.0  # free space between opposing motor ends (power tabs, wires)
-WHEEL_D, WHEEL_W = 65.0, 26.0
-WHEEL_GAP = 5.0           # bracket face outer surface -> wheel inner face (screw heads + coupling)
+WHEEL_D, WHEEL_W = 65.0, 27.0   # kit drawing
+WHEEL_GAP = 6.75          # bracket face outer surface -> tyre inner face (kit drawing: coupling collar + 0.5)
 
 # Maker-ESP32 v1.7x (from the board's official STEP model).
 # Mounted on the LOWER deck, centred between the axles, long side across the
@@ -83,6 +91,23 @@ STRAP_SLOT_LEN = STRAP_W + 2.0
 STRAP_SLOT_W = 3.5
 STRAP_OFFSET = 20.0       # strap centres at +/- this along the battery's length
 
+# Sensors (from the SolidCraft model, adamivie/jetson-ugv-chassis esp32_bot @ b0c8823).
+# Generic modules; the breakout boards sit on printed carriers that use existing
+# holes, so only the parts below put new holes into the acrylic.
+SENSORS = True
+LD06_HOLES = ((-14.1, 14.1), (14.1, -14.1))  # LD06 lidar, top deck centre: diagonal of a 28.2 mm square
+LD06_HOLE_D = 2.8                            # M2.5
+LD06_BASE, LD06_BASE_H = 38.59, 20.7         # datasheet drawing
+LD06_HEAD_D, LD06_HEAD_H = 35.29, 12.6
+CLIFF_X = PLATE_W / 2 - 25.0     # two VL53L0X (GY-530) cliff sensors under the front corners
+CLIFF_Y = PLATE_L / 2 - 20.0
+CLIFF_HOLE_SPACING = 19.3        # one seller listing - check your module
+CLIFF_SLOT_EXTRA = 2.0           # so slotted +/-1 mm to fit other GY-530 variants
+CLIFF_STANDOFF_H = 6.0
+INA_HOLES = ((-66.0, 24.0), (-44.0, 24.0))   # INA226 (CJMCU-226) printed carrier beside the power slot
+IMU_XY = (0.0, -60.0)            # BNO085 on a printed carrier using top-grid holes (+/-10, -60)
+FRONT_TOF_HOLES_X = 20.0         # VL53L5CX bracket uses the front accessory holes (+/-20, PL/2 - 8)
+
 GROUND_CLEARANCE_MIN = 10.0
 WHEEL_TO_WHEEL_MIN = 10.0     # gap between front and rear tyres
 
@@ -104,6 +129,11 @@ MASSES_G = {
     "board_components": 0.0,  # included in maker_esp32
     "board_standoff": 1.0,
     "strap": 5.0,
+    "sensor_ld06": 42.0,
+    "sensor_front_tof": 10.0,     # printed bracket + VL53L5CX board
+    "sensor_cliff": 3.0,
+    "sensor_imu": 8.0,            # carrier + BNO085
+    "sensor_ina": 8.0,            # carrier + INA226
 }
 ACRYLIC_DENSITY = 1.19e-3     # g/mm^3
 WIRING_G = 50.0               # wires, screws, ties - lumped at the deck centre
@@ -261,6 +291,13 @@ def make_bottom_plate() -> Plate:
     for y in (PLATE_L / 2 - 8.0, -PLATE_L / 2 + 8.0):
         for x in (-40.0, -20.0, 0.0, 20.0, 40.0):
             p.add(Circle(x, y, M3_CLEAR))
+    if SENSORS:
+        # cliff sensors (slotted along X for module-to-module variation) and the INA226 carrier
+        for sx in (-1, 1):
+            for dx in (-CLIFF_HOLE_SPACING / 2, CLIFF_HOLE_SPACING / 2):
+                p.add(Slot(sx * CLIFF_X + dx, CLIFF_Y, CLIFF_SLOT_EXTRA, M3_CLEAR, 0.0))
+        for x, y in INA_HOLES:
+            p.add(Circle(x, y, M3_CLEAR))
     # Visible beside the board, clear of every cut-out (checked in run_checks)
     p.add(front_arrow(-DC_JACK_SIDE * 58.0, 18.0))
     return p
@@ -276,7 +313,7 @@ def make_top_plate() -> Plate:
     # Cable slots for sensor wires down to the board
     for sy in (-1, 1):
         x, y, w, h = 0.0, sy * 40.0, 40.0, 8.0
-        p.add(RRect(x, y, w, h, 3.9))
+        p.add(RRect(x, y, w, h, h / 2))  # full half-round ends (matches the SolidCraft model)
         keep_out.append((x - w / 2 - 4, y - h / 2 - 4, x + w / 2 + 4, y + h / 2 + 4))
     if BATTERY_MOUNT == "top":
         bx, by = battery_footprint()
@@ -300,6 +337,9 @@ def make_top_plate() -> Plate:
             if any(x0 <= x <= x1 and y0 <= y <= y1 for x0, y0, x1, y1 in keep_out):
                 continue
             p.add(Circle(x, y, M3_CLEAR))
+    if SENSORS:
+        for x, y in LD06_HOLES:  # LD06 lidar (M2.5)
+            p.add(Circle(x, y, LD06_HOLE_D))
     p.add(front_arrow(*arrow_xy))
     return p
 
@@ -549,17 +589,70 @@ def tessellate(plate: Plate, seg=48):
 def plate_solid(plate: Plate, z0: float):
     import cadquery as cq
 
+    # Exactly the cut-file geometry (rounded slot corners included), so the 3D
+    # model, the STEP export and the collision checks match what gets cut.
     sk = cq.Sketch().rect(plate.w, plate.h).vertices().fillet(plate.r)
+    rrects = []
     for f in plate.features:
         if f.layer != CUT:
             continue
         if isinstance(f, Circle):
             sk = sk.push([(f.x, f.y)]).circle(f.d / 2, mode="s").reset()
         elif isinstance(f, RRect):
-            sk = sk.push([(f.x, f.y)]).rect(f.w, f.h, mode="s").reset()  # corner radius irrelevant for checks
+            rrects.append(f)
         elif isinstance(f, Slot):
             sk = sk.push([(f.x, f.y)]).slot(f.length, f.width, angle=f.angle, mode="s").reset()
-    return cq.Workplane("XY").workplane(offset=z0).placeSketch(sk).extrude(ACRYLIC_T)
+    solid = cq.Workplane("XY").workplane(offset=z0).placeSketch(sk).extrude(ACRYLIC_T)
+    for f in rrects:
+        r = min(f.r, f.w / 2 - 1e-3, f.h / 2 - 1e-3)
+        cutter = (cq.Workplane("XY").workplane(offset=z0 - 1)
+                  .sketch().rect(f.w, f.h).vertices().fillet(r).finalize()
+                  .extrude(ACRYLIC_T + 2).translate((f.x, f.y, 0)))
+        solid = solid.cut(cutter)
+    return solid
+
+
+def sensor_parts():
+    """Simplified sensor bodies (name, workplane, rgba), from the SolidCraft model.
+    Used by the collision checks here and drawn by full_model.py."""
+    import cadquery as cq
+
+    if not SENSORS:
+        return []
+    top = 2 * ACRYLIC_T + STANDOFF_H
+
+    def bx(l, w, h, cx, cy, cz):
+        return cq.Workplane("XY").box(l, w, h).translate((cx, cy, cz))
+
+    def cz(d, h, x, y, z0):
+        return cq.Workplane("XY").workplane(offset=z0).center(x, y).circle(d / 2).extrude(h)
+
+    out = []
+    lidar = bx(LD06_BASE, LD06_BASE, LD06_BASE_H, 0, 0, top + LD06_BASE_H / 2).union(
+        cz(LD06_HEAD_D, LD06_HEAD_H, 0, 0, top + LD06_BASE_H))
+    out.append(("sensor_ld06", lidar, (0.12, 0.12, 0.13, 1.0)))
+    yb = PLATE_L / 2
+    bracket = bx(50, 12, 3, 0, yb - 9.5, -1.5).union(bx(50, 3, 25, 0, yb - 5, -15.5))
+    out.append(("sensor_front_tof_bracket", bracket, (0.95, 0.55, 0.1, 1.0)))
+    out.append(("sensor_front_tof_board", bx(18, 1.6, 13, 0, yb - 2.7, -16), (0.1, 0.3, 0.7, 1.0)))
+    for tag, sx in (("left", -1), ("right", 1)):
+        cx = sx * CLIFF_X
+        legs = None
+        for dx in (-CLIFF_HOLE_SPACING / 2, CLIFF_HOLE_SPACING / 2):
+            leg = cz(5.0, CLIFF_STANDOFF_H, cx + dx, CLIFF_Y, -CLIFF_STANDOFF_H)
+            legs = leg if legs is None else legs.union(leg)
+        out.append((f"sensor_cliff_{tag}_standoffs", legs, (0.93, 0.92, 0.88, 1.0)))
+        out.append((f"sensor_cliff_{tag}_board", bx(25, 10.7, 1.6, cx, CLIFF_Y, -CLIFF_STANDOFF_H - 0.8),
+                    (0.1, 0.3, 0.7, 1.0)))
+    ix, iy = IMU_XY
+    out.append(("sensor_imu_carrier", bx(30, 30, 3, ix, iy, top + 1.5), (0.95, 0.55, 0.1, 1.0)))
+    out.append(("sensor_imu_board", bx(25.6, 22.7, 1.6, ix, iy, top + 6.8).union(cz(4.5, 3, ix, iy, top + 3)),
+                (0.1, 0.3, 0.7, 1.0)))
+    ina_x = sum(x for x, _ in INA_HOLES) / 2
+    ina_y = INA_HOLES[0][1]
+    out.append(("sensor_ina_carrier", bx(30, 24, 2, ina_x, ina_y, ACRYLIC_T + 1), (0.95, 0.55, 0.1, 1.0)))
+    out.append(("sensor_ina_board", bx(27, 20, 1.6, ina_x, ina_y, ACRYLIC_T + 2.8), (0.1, 0.3, 0.7, 1.0)))
+    return out
 
 
 def build_assembly(bottom: Plate, top: Plate):
@@ -651,6 +744,8 @@ def build_assembly(bottom: Plate, top: Plate):
     for i, (x, y) in enumerate(board_hole_positions()):
         so = cq.Workplane("XY").center(x, y).polygon(6, 5.5).extrude(BOARD_STANDOFF_H).translate((0, 0, ACRYLIC_T))
         parts[f"board_standoff_{i}"] = (so, (0.95, 0.95, 0.9, 1.0))
+    for name, wp, rgba in sensor_parts():
+        parts[name] = (wp, rgba)
     return parts
 
 
