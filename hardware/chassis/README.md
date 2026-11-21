@@ -39,6 +39,7 @@ From below (battery strapped between the axles):
 | `out/bottom_plate.svg` / `.dxf` | Laser cutting, lower deck (SVG for LightBurn) |
 | `out/top_plate.svg` / `.dxf` | Laser cutting, upper deck |
 | `out/fit_test_coupon.svg` / `.dxf` | **Cut this first.** A small test piece, see below |
+| `out/cut_sheet_both_plates.svg` | Both plates laid out together for one LightBurn job (needs 330 × 204 mm of material) |
 | `out/print_template_1to1.pdf` | Print at 100 % to check fit on paper before ordering |
 | `out/chassis_assembly.step` | Full 3D assembly for any CAD program |
 | `viewer.html` | Interactive 3D view (`python3 -m http.server` in this folder, then open `/viewer.html`) |
@@ -73,6 +74,18 @@ If you can, cut `fit_test_coupon` first (it costs pennies):
 If anything is off, edit the parameters at the top of `chassis.py`
 (`BRK_HOLE_ROWS`, `BRK_HOLE_SPACING`, `M3_CLEAR`, ...) and regenerate (see
 below).
+
+## Cut day checklist
+
+1. **Print check:** print `out/print_template_1to1.pdf` at 100 %. Confirm the
+   100 mm bar, then lay a bracket and the Maker-ESP32 on it.
+2. **Coupon:** cut `out/fit_test_coupon.svg`. Check that the bracket fits the
+   slots, choose the hole size where an M3 screw slides in freely, and measure
+   the 40 mm line.
+3. **Adjust if needed:** if anything was off, change the parameter in
+   `chassis.py`, regenerate, and repeat step 2.
+4. **Plates:** cut `out/cut_sheet_both_plates.svg` (or the two plate files
+   one at a time). Use 3 mm cast acrylic, at least 330 × 204 mm with a margin.
 
 ## Cutting with LightBurn
 

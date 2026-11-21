@@ -383,11 +383,11 @@ def write_dxf(plate: Plate, path: Path):
 # =============================================================================
 # SVG (mm units, hairline strokes: red = cut, blue = engrave)
 # =============================================================================
-def svg_paths(plate: Plate, margin: float):
+def svg_paths(plate: Plate, margin: float, offset=(0.0, 0.0)):
     """(layer, path_d) in SVG page coordinates: origin top-left, Y down, all
     coordinates positive and no transforms - the simplest form for laser
     software (LightBurn, LaserGRBL, RDWorks, Inkscape) to import."""
-    ox, oy = plate.w / 2 + margin, plate.h / 2 + margin
+    ox, oy = plate.w / 2 + margin + offset[0], plate.h / 2 + margin + offset[1]
 
     def P(x, y):  # plate coords (Y up, centred) -> page coords
         return f"{x + ox:.3f},{oy - y:.3f}"
@@ -442,6 +442,35 @@ def write_svg(plate: Plate, path: Path):
         lines.append(f'<path fill="none" stroke="{colours[layer]}" stroke-width="0.01" d="{d}"/>')
     lines.append("</svg>")
     path.write_text("\n".join(lines) + "\n")
+
+
+SHEET_GAP = 6.0  # mm between parts on the combined cut sheet
+
+
+def write_sheet_svg(plates, path: Path):
+    """All given plates side by side on one sheet, for cutting in one job.
+    Same flat, transform-free paths as the single-plate files."""
+    margin = 2.0
+    x = 0.0
+    paths = []
+    height = 0.0
+    for plate in plates:
+        paths += svg_paths(plate, margin, offset=(x, 0.0))
+        x += plate.w + SHEET_GAP
+        height = max(height, plate.h)
+    w, h = x - SHEET_GAP + 2 * margin, height + 2 * margin
+    colours = {CUT: "#ff0000", ENGRAVE: "#0000ff"}
+    names = " + ".join(p.name for p in plates)
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{w:.3f}mm" height="{h:.3f}mm" viewBox="0 0 {w:.3f} {h:.3f}">',
+        f"<!-- cut sheet: {names}; needs {w:.0f} x {h:.0f} mm of {ACRYLIC_T:g} mm acrylic. red = cut, blue = engrave/score -->",
+    ]
+    for layer, d in paths:
+        lines.append(f'<path fill="none" stroke="{colours[layer]}" stroke-width="0.01" d="{d}"/>')
+    lines.append("</svg>")
+    path.write_text("\n".join(lines) + "\n")
+    return w, h
 
 
 # =============================================================================
@@ -855,6 +884,8 @@ def main():
     for plate in (bottom, top, coupon):
         write_dxf(plate, out / f"{plate.name}.dxf")
         write_svg(plate, out / f"{plate.name}.svg")
+    sheet_w, sheet_h = write_sheet_svg([bottom, top], out / "cut_sheet_both_plates.svg")
+    print(f"cut sheet: both plates in {sheet_w:.0f} x {sheet_h:.0f} mm")
     write_pdf([bottom, top, coupon], out / "print_template_1to1.pdf")
     write_step(parts, out / "chassis_assembly.step")
     write_glb(parts, out / "chassis_assembly.glb")
