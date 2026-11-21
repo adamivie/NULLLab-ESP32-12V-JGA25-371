@@ -31,7 +31,7 @@
 <body>
 <div id="ui">
   <b>ESP32 4WD chassis</b>
-  <label><input type="checkbox" id="top" checked> Top deck &amp; board</label>
+  <label><input type="checkbox" id="top" checked> Top deck</label>
   <label><input type="checkbox" id="wheels" checked> Wheels</label>
   <label><input type="checkbox" id="battery" checked> Battery</label>
   <span id="status">loading…</span>
@@ -81,7 +81,7 @@ new GLTFLoader().load("out/chassis_assembly.glb", (gltf) => {
     if (m && m.opacity < 1) { m.transparent = true; m.depthWrite = false; m.roughness = 0.15; }
     let n = o; let name = "";
     while (n) { name += " " + (n.name || ""); n = n.parent; }
-    if (/top_plate|maker_esp32|board_/.test(name)) groups.top.push(o);
+    if (/top_plate/.test(name)) groups.top.push(o);
     if (/wheel/.test(name)) groups.wheels.push(o);
     if (/battery/.test(name)) groups.battery.push(o);
   });
@@ -96,7 +96,7 @@ new GLTFLoader().load("out/chassis_assembly.glb", (gltf) => {
 }, undefined, (e) => { document.getElementById("status").textContent = "could not load out/chassis_assembly.glb - serve this folder over http (see source)"; });
 
 function setView(v) {
-  const views = { iso: [-270, 200, -300], side: [-430, 30, 0], top: [0, 480, -1], front: [0, 60, -430], rear: [240, 190, 290] };
+  const views = { iso: [-270, 200, -300], side: [-430, 30, 0], top: [0, 480, -1], front: [0, 60, -430], rear: [240, 190, 290], under: [-230, -170, -260] };
   camera.position.set(...(views[v] || views.iso));
   controls.target.set(0, 0, 0);
   controls.update();

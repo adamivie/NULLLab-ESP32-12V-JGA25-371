@@ -2,8 +2,13 @@
 
 A two-deck, laser-cut acrylic chassis:
 
-- **Lower deck:** the four JGA25-371 motors hang under it in their L-brackets, and the battery sits on top of it.
-- **Upper deck:** the Maker-ESP32 sits at the rear, with a grid of M3 accessory holes at the front.
+- **Lower deck:** the four JGA25-371 motors hang under it in their L-brackets.
+  The **Maker-ESP32 sits on top of it, right between the motors**, so every
+  motor and encoder cable comes straight up through a slot beside the board,
+  a few centimetres instead of a trip to another deck. The battery hangs
+  **underneath** it between the axles, which keeps the centre of gravity low.
+- **Upper deck:** a full grid of M3 holes for sensors and add-ons. It also
+  protects the board.
 
 ![assembly](images/assembly.png)
 
@@ -12,13 +17,20 @@ A two-deck, laser-cut acrylic chassis:
 | Plates | 2 × 160 × 200 mm, 3 mm acrylic |
 | Footprint | 222 mm wide (over tyres) × 200 mm long |
 | Wheelbase / track | 100 mm / 196 mm (wheel centres): see [why 100 mm](#why-a-100-mm-wheelbase) |
-| Ground clearance | 19 mm (bracket bottoms); 53 mm under the lower deck |
-| Deck spacing | 35 mm (fits a 3S 2200 mAh LiPo up to ~28 mm tall) |
-| Mass (estimated) | ~1.2 kg, centre of gravity 52 mm above the floor |
+| Ground clearance | 19 mm (bracket bottoms), 25 mm under the battery |
+| Deck spacing | 40 mm (board plus plugged-in wires, with room to spare) |
+| Battery | 3S LiPo up to ~110 × 34 × 26 mm, strapped under the lower deck |
+| Mass (estimated) | ~1.2 kg, centre of gravity 46 mm above the floor |
 
 ![side view](images/side.png)
 
+Top deck removed (the controller sits between the motor wire slots):
+
 ![lower deck](images/lower_deck.png)
+
+From below (battery strapped between the axles):
+
+![underside](images/underside.png)
 
 ## Files
 
@@ -49,8 +61,8 @@ not from your actual bracket, so check it:
 2. Lay a bracket flange on one of the four slot groups on the bottom-plate
    page. The bracket's bend (outer face) goes on the plate edge. All four
    flange holes should sit inside the slots.
-3. Lay the Maker-ESP32 on the top-plate page. Its four corner holes should
-   line up with the four circles near the rear.
+3. Lay the Maker-ESP32 on the bottom-plate page. Its four corner holes should
+   line up with the four circles in the middle.
 
 If you can, cut `fit_test_coupon` first (it costs pennies):
 
@@ -111,12 +123,12 @@ workflow prefers DXF.
 | 1 | Bottom plate, top plate, fit coupon | 3 mm acrylic |
 | 4 | JGA25 L-brackets + motor screws | from the motor kit |
 | 16 | M3 × 10 screw + **M3 nylock nut** | brackets to the bottom plate |
-| 6 | M3 × 35 hex standoff, female–female | between the decks |
+| 6 | M3 × 40 hex standoff, female–female | between the decks |
 | 12 | M3 × 6 screw | standoff ends |
-| 4 | M3 × 10 **nylon** standoff + 8 × M3 × 6 nylon screws | board on the top plate (nylon can't short anything) |
-| 2 | 20 mm hook-and-loop strap, ~250 mm | battery |
+| 4 | M3 × 10 **nylon** standoff + 8 × M3 × 6 nylon screws | board on the lower deck (nylon can't short anything) |
+| 2 | 20 mm hook-and-loop strap, ~200 mm | battery |
 | ~10 | 3 mm cable ties | wire management |
-| 1 | 3S LiPo, ~2200 mAh, ≤ 110 × 50 × 28 mm | or a 12 V pack of similar size |
+| 1 | 3S LiPo, ~2200 mAh, ≤ 110 × 34 × 26 mm | or a 12 V pack of similar size |
 | 1 | XT60 (or your battery's plug) to 5.5 × 2.1 mm DC barrel lead | power to the board's DC jack |
 | 1 | **LiPo voltage alarm (buzzer)** on the balance lead | the board can't measure battery voltage, and an over-discharged LiPo is ruined |
 
@@ -134,19 +146,25 @@ under screw heads help.
    Fit an M3 × 10 screw from the top and a nylock nut underneath. Before tightening,
    slide the bracket outward in its slots until the face is flush with the edge.
 4. **Wheels:** fit the couplings and wheels onto the shafts.
-5. **Wires:** bring each motor's cable up through the slot above its pair of
-   motors, then tie it down at the cable-tie holes.
-6. **Standoffs:** screw the six M3 × 35 standoffs onto the bottom plate.
-7. **Battery:** thread the two straps down through one pair of strap slots and
-   up through the other, and strap the battery in the middle.
-8. **Board:** fit the nylon standoffs on the top plate and mount the
-   Maker-ESP32 with its **USB / DC-jack end toward the rear** (away from the
-   arrow).
-9. **Top plate:** lower it onto the standoffs, feeding the wires up through
-   the two long slots beside the board. Motor wires go to the board's motor
-   ports; encoder wires go to the pins in [docs/WIRING.md](../../docs/WIRING.md).
-   Screw the top plate down.
+5. **Battery straps first.** The straps run under the board, so fit them now.
+   Thread each strap down through one slot of a pair and up through the other,
+   leaving a loop hanging underneath for the battery.
+6. **Board:** fit the four nylon standoffs on the bottom plate and mount the
+   Maker-ESP32 across the robot, with its **USB / DC-jack end on the left**,
+   next to the long slot. The straps pass flat underneath it.
+7. **Wires:** bring each motor's cable up through the slot above it, plug it
+   in (motor wires to the motor ports, encoder wires to the pins in
+   [docs/WIRING.md](../../docs/WIRING.md)), and tie it down at the cable-tie holes.
+8. **Battery:** slide it into the strap loops under the robot (lying across
+   it), cinch the straps, and bring its lead up through the slot beside the
+   DC jack.
+9. **Top plate:** screw the six M3 × 40 standoffs onto the bottom plate, then
+   the top plate onto them. Sensor wires can come down through its two
+   centre slots to the board.
 10. Continue with bring-up in the [main README](../../README.md#3-bring-up-and-calibration-do-this-once).
+
+To swap or charge the battery, open the straps underneath; you don't need to
+take anything apart.
 
 ## Why a 100 mm wheelbase
 
@@ -157,7 +175,7 @@ little torque (about 0.9 kg·cm at stall), so turning is the limiting factor.
 Driving straight needs only a fraction of that.
 
 A shorter wheelbase also has a limit. The robot must not be able to tip over
-nose-first when it brakes hard. With the centre of gravity at 52 mm, the
+nose-first when it brakes hard. With the centre of gravity at 46 mm, the
 tyres must slide before it tips, which needs `(wheelbase / 2) / CoG height`
 above the tyre friction (about 0.8).
 
@@ -165,11 +183,15 @@ above the tyre friction (about 0.8).
 
 | Wheelbase | L / B | Spin torque per wheel | % of stall | Tip margin | |
 |---|---|---|---|---|---|
-| 80 mm | 0.41 | 0.32 kg·cm | 35 % | 0.92 | can tip |
-| 90 mm | 0.46 | 0.36 kg·cm | 40 % | 1.04 | marginal |
-| **100 mm** | **0.51** | **0.40 kg·cm** | **44 %** | **1.16** | **chosen** |
-| 110 mm | 0.56 | 0.44 kg·cm | 48 % | 1.28 | ok |
-| 130 mm | 0.66 | 0.51 kg·cm | 57 % | 1.52 | turns sluggishly |
+| 80 mm | 0.41 | 0.32 kg·cm | 35 % | 1.08 | little margin |
+| 90 mm | 0.46 | 0.36 kg·cm | 40 % | 1.22 | ok |
+| **100 mm** | **0.51** | **0.40 kg·cm** | **44 %** | **1.35** | **chosen** |
+| 110 mm | 0.56 | 0.44 kg·cm | 49 % | 1.49 | ok |
+| 130 mm | 0.66 | 0.52 kg·cm | 57 % | 1.76 | turns sluggishly |
+
+With the battery under the deck, 90 mm would also be safe. I kept 100 mm
+because the extra stability margin covers errors in the mass estimates
+(a heavier battery, for example) for only 4 % more turning effort.
 
 How to read it:
 
@@ -185,6 +207,19 @@ page's wheel readouts while spinning in place: each shows the motor's duty
 (%). If a motor sits near 100 % when turning on your floor, these assumptions
 don't hold for your surface. The fix is then a higher-torque gear ratio of the
 same motor (e.g. 1:21.3, ~280 RPM), which drops straight into this chassis.
+
+## Why the battery goes underneath
+
+`BATTERY_MOUNT` in `chassis.py` switches between the two layouts. Both pass
+every check:
+
+| | Centre of gravity | Tip margin |
+|---|---|---|
+| **`"under"` (default):** strapped beneath the lower deck | **46 mm** | **1.35** |
+| `"top"`: strapped on the top deck | 58 mm | 1.07 |
+
+Underneath, the robot is much more stable, and the battery is still easy to
+swap from below. Choose `"top"` if you'd rather reach the battery from above.
 
 ## Changing the design
 
@@ -205,7 +240,8 @@ Every run rebuilds the 3D assembly and **refuses to write files if the
 design is broken**:
 
 - any two parts collide (motors, encoder plugs, bracket nuts, wheels, battery,
-  battery straps, standoffs, board)
+  battery straps, standoffs, board and its plugged-in wires)
+- the board would sit over the motor wire slots
 - spinning in place would need more than half the motors' stall torque
 - the robot could tip over under hard braking
 - ground clearance is too low

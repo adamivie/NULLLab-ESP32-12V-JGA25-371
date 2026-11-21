@@ -36,7 +36,9 @@ on slopes and as the battery drains.
 ## 0. Build the chassis
 
 A laser-cut, two-deck acrylic chassis designed for exactly these parts is in
-**[hardware/chassis](hardware/chassis/README.md)**: cut files (DXF/SVG), a
+**[hardware/chassis](hardware/chassis/README.md)**. The controller sits on the
+lower deck between the motors (short wires), with the battery underneath for a
+low centre of gravity. You get cut files (SVG for LightBurn, plus DXF), a
 printable 1:1 check template, a 3D model, a parts list and assembly steps.
 
 <img src="hardware/chassis/images/assembly.png" width="520" alt="chassis render">

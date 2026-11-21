@@ -38,7 +38,7 @@ PLATE_W = 160.0           # plate width (X); bracket faces sit flush with the si
 PLATE_L = 200.0           # plate length (Y)
 CORNER_R = 8.0
 WHEELBASE = 100.0         # front-to-rear axle distance (chosen with `python chassis.py --sweep`)
-STANDOFF_H = 35.0         # M3 hex standoffs between the decks
+STANDOFF_H = 40.0         # M3 hex standoffs between the decks (room to plug wires into the board)
 BOARD_STANDOFF_H = 10.0   # nylon M3 standoffs under the Maker-ESP32
 M3_CLEAR = 3.3            # M3 clearance hole (3.2-3.4 typical; see fit coupon)
 
@@ -62,19 +62,25 @@ MOTOR_END_GAP_MIN = 12.0  # free space between opposing motor ends (power tabs, 
 WHEEL_D, WHEEL_W = 65.0, 26.0
 WHEEL_GAP = 5.0           # bracket face outer surface -> wheel inner face (screw heads + coupling)
 
-# Maker-ESP32 v1.7x (from the board's official STEP model)
-BOARD_W, BOARD_L, BOARD_T = 56.0, 80.0, 1.6   # board is mounted long-side along Y
+# Maker-ESP32 v1.7x (from the board's official STEP model).
+# Mounted on the LOWER deck, centred between the axles, long side across the
+# robot (along X), so motor and encoder wires come straight up through the
+# wire slots next to it. The USB / DC-jack end faces the left side.
+BOARD_W, BOARD_L, BOARD_T = 56.0, 80.0, 1.6   # BOARD_L runs along X
 BOARD_HOLES = [(4, 4), (4, 52), (76, 4), (76, 52)]  # (along length, along width) from corner
 BOARD_HOLE_D = M3_CLEAR   # board holes are 4.65; M3 nylon screws are plenty
-BOARD_CENTER_Y = -50.0    # board sits at the rear: USB / DC jack end faces backwards
-BOARD_COMPONENT_H = 14.0  # tallest parts (DC jack, headers) for clearance checks
+BOARD_COMPONENT_H = 20.0  # tallest parts incl. Dupont plugs on the headers (clearance checks)
+USB_SIDE = -1             # -1: USB / DC jack face the robot's left side, +1: right
 
-# Battery bay: sized for a 3S 2200 mAh LiPo (~105 x 34 x 25 mm); straps take up to ~50 mm wide packs
-BATTERY = (34.0, 105.0, 26.0)   # X, Y, Z
+# Battery: 3S 2200 mAh LiPo (~105 x 34 x 26 mm).
+#   "under": strapped beneath the lower deck between the axles (lowest centre of gravity)
+#   "top":   strapped on the top deck (easiest to swap, higher centre of gravity)
+BATTERY_MOUNT = "under"
+BATTERY = (105.0, 34.0, 26.0)   # length, width, height
 STRAP_W = 20.0            # hook-and-loop strap width
-STRAP_SLOT = (3.5, STRAP_W + 2.0)
-STRAP_X = 27.0            # slot centre distance from centre line
-STRAP_Y = (-25.0, 25.0)
+STRAP_SLOT_LEN = STRAP_W + 2.0
+STRAP_SLOT_W = 3.5
+STRAP_OFFSET = 20.0       # strap centres at +/- this along the battery's length
 
 GROUND_CLEARANCE_MIN = 10.0
 WHEEL_TO_WHEEL_MIN = 10.0     # gap between front and rear tyres
@@ -180,12 +186,35 @@ def standoff_positions():
 
 
 def board_hole_positions():
+    """Board centred on the lower deck, long side along X."""
+    return [(-BOARD_L / 2 + along, -BOARD_W / 2 + across) for along, across in BOARD_HOLES]
+
+
+def battery_footprint():
+    """(size_x, size_y) of the battery on its deck."""
+    length, width, _ = BATTERY
+    return (length, width) if BATTERY_MOUNT == "under" else (width, length)
+
+
+def strap_slots():
+    """(x, y, w, h) of each strap slot: a pair either side of the battery for each strap.
+    Under the deck the battery lies across the robot (straps run front-back);
+    on the top deck it lies lengthways (straps run left-right)."""
+    sx, sy = battery_footprint()
     out = []
-    for along, across in BOARD_HOLES:
-        y = BOARD_CENTER_Y - BOARD_L / 2 + along
-        x = -BOARD_W / 2 + across
-        out.append((x, y))
+    for k in (-1, 1):
+        if BATTERY_MOUNT == "under":
+            for side in (-1, 1):
+                out.append((k * STRAP_OFFSET, side * (sy / 2 + 3.0 + STRAP_SLOT_W / 2), STRAP_SLOT_LEN, STRAP_SLOT_W))
+        else:
+            for side in (-1, 1):
+                out.append((side * (sx / 2 + 3.0 + STRAP_SLOT_W / 2), k * STRAP_OFFSET, STRAP_SLOT_W, STRAP_SLOT_LEN))
     return out
+
+
+def power_slot():
+    """(x, y, w, h): battery lead up to the DC jack at the board's USB end."""
+    return (USB_SIDE * (BOARD_L / 2 + 12.0), 0.0, 10.0, 24.0)
 
 
 def zip_tie_pair(x, y, angle=0.0):
@@ -216,10 +245,14 @@ def make_bottom_plate() -> Plate:
         for sx in (-1, 1):
             p.add(RRect(sx * (x_in + x_out) / 2, y, x_out - x_in, CONNECTOR[1] + 6.0, 4.0))
             p.add(*zip_tie_pair(sx * (x_out + 6.0), y, 0.0))
-    # Battery straps
-    for y in STRAP_Y:
-        for sx in (-1, 1):
-            p.add(RRect(sx * STRAP_X, y, STRAP_SLOT[0], STRAP_SLOT[1], STRAP_SLOT[0] / 2 - 0.01))
+    # Controller board (nylon standoffs) and the battery-lead slot beside its DC jack
+    for x, y in board_hole_positions():
+        p.add(Circle(x, y, BOARD_HOLE_D))
+    if BATTERY_MOUNT == "under":
+        x, y, w, h = power_slot()
+        p.add(RRect(x, y, w, h, 4.0))
+        for x, y, w, h in strap_slots():
+            p.add(RRect(x, y, w, h, min(w, h) / 2 - 0.01))
     # Deck standoffs
     for x, y in standoff_positions():
         p.add(Circle(x, y, M3_CLEAR))
@@ -227,36 +260,46 @@ def make_bottom_plate() -> Plate:
     for y in (PLATE_L / 2 - 8.0, -PLATE_L / 2 + 8.0):
         for x in (-40.0, -20.0, 0.0, 20.0, 40.0):
             p.add(Circle(x, y, M3_CLEAR))
-    # Visible beside the battery, clear of every cut-out (checked in run_checks)
-    p.add(front_arrow(-50.0, 25.0))
+    # Visible beside the board, clear of every cut-out (checked in run_checks)
+    p.add(front_arrow(-USB_SIDE * 58.0, 18.0))
     return p
 
 
 def make_top_plate() -> Plate:
+    """Accessory deck: M3 grid for sensors, cable slots down to the board,
+    and the battery bay when BATTERY_MOUNT == "top"."""
     p = Plate("top_plate", PLATE_W, PLATE_L, CORNER_R)
     for x, y in standoff_positions():
         p.add(Circle(x, y, M3_CLEAR))
-    for x, y in board_hole_positions():
-        p.add(Circle(x, y, BOARD_HOLE_D))
-    # Cable slots either side of the board (motor ports / encoder headers)
-    for sx in (-1, 1):
-        p.add(RRect(sx * (BOARD_W / 2 + 12.0), BOARD_CENTER_Y, 10.0, 56.0, 4.0))
-        p.add(*zip_tie_pair(sx * (BOARD_W / 2 + 24.0), BOARD_CENTER_Y + 18.0, 90.0))
-        p.add(*zip_tie_pair(sx * (BOARD_W / 2 + 24.0), BOARD_CENTER_Y - 18.0, 90.0))
-    # Accessory grid: M3 holes on 10 mm pitch in the free front area
-    y_start = BOARD_CENTER_Y + BOARD_L / 2 + 30.0
-    keep_out = [(x, y) for x, y in standoff_positions()]
-    y = y_start
-    while y <= PLATE_L / 2 - 10.0 + 1e-6:
-        for i in range(-6, 7):
+    keep_out = []  # (x0, y0, x1, y1) boxes the grid must avoid
+    # Cable slots for sensor wires down to the board
+    for sy in (-1, 1):
+        x, y, w, h = 0.0, sy * 40.0, 40.0, 8.0
+        p.add(RRect(x, y, w, h, 3.9))
+        keep_out.append((x - w / 2 - 4, y - h / 2 - 4, x + w / 2 + 4, y + h / 2 + 4))
+    if BATTERY_MOUNT == "top":
+        bx, by = battery_footprint()
+        keep_out.append((-bx / 2 - 10, -by / 2 - 2, bx / 2 + 10, by / 2 + 2))
+        for x, y, w, h in strap_slots():
+            p.add(RRect(x, y, w, h, min(w, h) / 2 - 0.01))
+            keep_out.append((x - w / 2 - 4, y - h / 2 - 4, x + w / 2 + 4, y + h / 2 + 4))
+    arrow_xy = (0.0, 0.0) if BATTERY_MOUNT == "under" else (-60.0, 0.0)
+    keep_out.append((arrow_xy[0] - 13, arrow_xy[1] - 15, arrow_xy[0] + 13, arrow_xy[1] + 15))
+    # M3 accessory grid, 10 mm pitch
+    for j in range(-9, 10):
+        y = j * 10.0
+        if abs(y) > PLATE_L / 2 - 10.0:
+            continue
+        for i in range(-7, 8):
             x = i * 10.0
             if abs(x) > PLATE_W / 2 - 10.0:
                 continue
-            if any(math.hypot(x - sx, y - sy) < 8.0 for sx, sy in keep_out):
+            if any(math.hypot(x - sx, y - sy) < 8.0 for sx, sy in standoff_positions()):
+                continue
+            if any(x0 <= x <= x1 and y0 <= y <= y1 for x0, y0, x1, y1 in keep_out):
                 continue
             p.add(Circle(x, y, M3_CLEAR))
-        y += 10.0
-    p.add(front_arrow(0.0, BOARD_CENTER_Y + BOARD_L / 2 + 14.0))  # just in front of the board
+    p.add(front_arrow(*arrow_xy))
     return p
 
 
@@ -548,23 +591,35 @@ def build_assembly(bottom: Plate, top: Plate):
         so = cq.Workplane("XY").center(x, y).polygon(6, 6.35).extrude(STANDOFF_H).translate((0, 0, ACRYLIC_T))
         parts[f"standoff_{i}"] = (so, (0.85, 0.7, 0.3, 1.0))
 
-    # battery straps: thin bands under the plate between each slot pair
-    for i, y in enumerate(STRAP_Y):
-        band = cq.Workplane("XY").box(2 * STRAP_X + STRAP_SLOT[0], STRAP_W, 1.5).translate((0, y, -0.75))
-        parts[f"strap_{i}"] = (band, (0.1, 0.1, 0.1, 1.0))
-    # battery on the bottom deck
-    bx, by, bz = BATTERY
-    parts["battery"] = (cq.Workplane("XY").box(bx, by, bz).translate((0, 0, ACRYLIC_T + bz / 2)), (0.2, 0.35, 0.8, 1.0))
+    # battery + straps
+    bx, by = battery_footprint()
+    bz = BATTERY[2]
+    if BATTERY_MOUNT == "under":
+        z_batt = -bz / 2 - 0.2                     # hangs under the lower deck
+        strap_z_top, strap_z_bot = ACRYLIC_T, -bz - 0.2
+    else:
+        z_batt = top_z + ACRYLIC_T + bz / 2        # sits on the top deck
+        strap_z_top, strap_z_bot = top_z + ACRYLIC_T + bz, top_z
+    parts["battery"] = (cq.Workplane("XY").box(bx, by, bz).translate((0, 0, z_batt)), (0.2, 0.35, 0.8, 1.0))
+    # Each strap: a band over the top and one underneath (the vertical runs
+    # pass through the slots, which the plate model already cuts out).
+    for i, k in enumerate((-1, 1)):
+        for j, zc in enumerate((strap_z_top + 0.75, strap_z_bot - 0.75)):
+            if BATTERY_MOUNT == "under":
+                band = cq.Workplane("XY").box(STRAP_W, by + 2 * (3.0 + STRAP_SLOT_W), 1.5).translate((k * STRAP_OFFSET, 0, zc))
+            else:
+                band = cq.Workplane("XY").box(bx + 2 * (3.0 + STRAP_SLOT_W), STRAP_W, 1.5).translate((0, k * STRAP_OFFSET, zc))
+            parts[f"strap_{i}_{j}"] = (band, (0.1, 0.1, 0.1, 1.0))
 
-    # board on nylon standoffs on the top deck
-    board_z = top_z + ACRYLIC_T + BOARD_STANDOFF_H
-    board = cq.Workplane("XY").box(BOARD_W, BOARD_L, BOARD_T).translate((0, BOARD_CENTER_Y, board_z + BOARD_T / 2))
-    comps = cq.Workplane("XY").box(BOARD_W - 4, BOARD_L - 4, BOARD_COMPONENT_H).translate(
-        (0, BOARD_CENTER_Y, board_z + BOARD_T + BOARD_COMPONENT_H / 2))
+    # controller board on nylon standoffs on the LOWER deck
+    board_z = ACRYLIC_T + BOARD_STANDOFF_H
+    board = cq.Workplane("XY").box(BOARD_L, BOARD_W, BOARD_T).translate((0, 0, board_z + BOARD_T / 2))
+    comps = cq.Workplane("XY").box(BOARD_L - 4, BOARD_W - 4, BOARD_COMPONENT_H).translate(
+        (0, 0, board_z + BOARD_T + BOARD_COMPONENT_H / 2))
     parts["maker_esp32"] = (board, (0.1, 0.45, 0.3, 1.0))
     parts["board_components"] = (comps, (0.25, 0.25, 0.3, 0.6))
     for i, (x, y) in enumerate(board_hole_positions()):
-        so = cq.Workplane("XY").center(x, y).polygon(6, 5.5).extrude(BOARD_STANDOFF_H).translate((0, 0, top_z + ACRYLIC_T))
+        so = cq.Workplane("XY").center(x, y).polygon(6, 5.5).extrude(BOARD_STANDOFF_H).translate((0, 0, ACRYLIC_T))
         parts[f"board_standoff_{i}"] = (so, (0.95, 0.95, 0.9, 1.0))
     return parts
 
@@ -630,10 +685,14 @@ def run_checks(parts, bottom: Plate, top: Plate):
     # 5b. front and rear tyres must not touch
     if WHEELBASE - WHEEL_D < WHEEL_TO_WHEEL_MIN:
         problems.append(f"front/rear tyres only {WHEELBASE - WHEEL_D:.1f} mm apart")
-    # 5c. battery must not cover the wire slots
-    x_in, _ = wire_slot_x_range()
-    if BATTERY[0] / 2 + 1.0 > x_in:
-        problems.append("battery would cover the wire slots - narrower battery or wider plate")
+    # 5c. the board must not sit over the wire slots or the power slot (wires
+    # come up beside it, and it needs to be reachable)
+    x_in, x_out = wire_slot_x_range()
+    slot_y0 = WHEELBASE / 2 - (CONNECTOR[1] + 6.0) / 2
+    if BOARD_W / 2 + 2.0 > slot_y0:
+        problems.append("board overlaps the wire slots (shorter board side vs wheelbase)")
+    if BATTERY_MOUNT not in ("under", "top"):
+        problems.append(f"BATTERY_MOUNT must be 'under' or 'top', not {BATTERY_MOUNT!r}")
     # 5d. physics: spin-in-place torque and tip-over margin
     phys = physics(parts)
     if phys["turn_frac_stall"] > TURN_TORQUE_MAX_FRACTION:
@@ -641,9 +700,9 @@ def run_checks(parts, bottom: Plate, top: Plate):
                         f"{phys['turn_frac_stall'] * 100:.0f}% of stall (> {TURN_TORQUE_MAX_FRACTION * 100:.0f}%)")
     if phys["tip_margin"] < TIP_MARGIN_MIN:
         problems.append(f"tip-over margin {phys['tip_margin']:.2f} (< {TIP_MARGIN_MIN}): it could tip under hard braking")
-    # 6. battery fits between strap slots and under the top deck
-    if BATTERY[0] / 2 > STRAP_X - STRAP_SLOT[0] / 2 - 0.5:
-        problems.append("battery wider than the strap slots allow")
+    # 6. a strap must not be wider than the battery is long (it would slip off)
+    if 2 * STRAP_OFFSET + STRAP_W > BATTERY[0] + 2.0:
+        problems.append("straps overhang the battery ends - reduce STRAP_OFFSET")
     return problems, clearance
 
 
@@ -669,7 +728,7 @@ def mass_properties(parts):
             m = MASSES_G[key]
         c = solid.Center()
         add(m, (c.x, c.y, c.z))
-    add(WIRING_G, (0.0, 0.0, ACRYLIC_T + STANDOFF_H / 2))
+    add(WIRING_G, (0.0, 0.0, ACRYLIC_T + 10.0))  # wiring now lives on the lower deck
     return total, tuple(v / total for v in moment)
 
 
