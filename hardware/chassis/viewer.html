@@ -67,7 +67,7 @@ const root = new THREE.Group();
 scene.add(root);
 
 const groups = { top: [], wheels: [], battery: [] };
-const groundZ = -20.75 - 65 / 2;  // wheel contact (matches chassis.py defaults)
+const groundZ = -20.75 - 65 / 2;  // wheel contact (BRK_AXIS_FROM_FLANGE + WHEEL_D/2 in chassis.py)
 
 new GLTFLoader().load("out/chassis_assembly.glb", (gltf) => {
   root.add(gltf.scene);

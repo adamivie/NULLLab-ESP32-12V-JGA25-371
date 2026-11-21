@@ -37,7 +37,7 @@ ACRYLIC_T = 3.0           # sheet thickness (3 mm cast acrylic recommended)
 PLATE_W = 160.0           # plate width (X); bracket faces sit flush with the sides
 PLATE_L = 200.0           # plate length (Y)
 CORNER_R = 8.0
-WHEELBASE = 130.0         # front-to-rear axle distance
+WHEELBASE = 100.0         # front-to-rear axle distance (chosen with `python chassis.py --sweep`)
 STANDOFF_H = 35.0         # M3 hex standoffs between the decks
 BOARD_STANDOFF_H = 10.0   # nylon M3 standoffs under the Maker-ESP32
 M3_CLEAR = 3.3            # M3 clearance hole (3.2-3.4 typical; see fit coupon)
@@ -74,9 +74,32 @@ BATTERY = (34.0, 105.0, 26.0)   # X, Y, Z
 STRAP_W = 20.0            # hook-and-loop strap width
 STRAP_SLOT = (3.5, STRAP_W + 2.0)
 STRAP_X = 27.0            # slot centre distance from centre line
-STRAP_Y = (-30.0, 30.0)
+STRAP_Y = (-25.0, 25.0)
 
 GROUND_CLEARANCE_MIN = 10.0
+WHEEL_TO_WHEEL_MIN = 10.0     # gap between front and rear tyres
+
+# Physics (used for the wheelbase / stability checks and `--sweep`)
+TYRE_MU = 0.8                 # rubber on smooth floor ~0.7-1.0; carpet lower
+MOTOR_STALL_KGCM = 0.9        # listing table, 1:9.6 ratio (24 V table; treat as an estimate)
+MOTOR_RATED_KGCM = 0.2
+TURN_TORQUE_MAX_FRACTION = 0.5  # spin-in-place torque must stay below this fraction of stall
+TIP_MARGIN_MIN = 1.0          # tip-over acceleration / sliding acceleration (>1: slides before it tips)
+# Part masses in grams (acrylic is computed from its volume)
+MASSES_G = {
+    "motor": 100.0,           # JGA25-371 with encoder, typical
+    "wheel": 45.0,            # 65 mm wheel + coupling
+    "bracket_screws": 8.0,
+    "bracket": 15.0,
+    "standoff": 4.0,          # M3 x 35 brass hex
+    "battery": 185.0,         # 3S 2200 mAh LiPo
+    "maker_esp32": 35.0,
+    "board_components": 0.0,  # included in maker_esp32
+    "board_standoff": 1.0,
+    "strap": 5.0,
+}
+ACRYLIC_DENSITY = 1.19e-3     # g/mm^3
+WIRING_G = 50.0               # wires, screws, ties - lumped at the deck centre
 
 # =============================================================================
 # 2D feature model (single source for DXF, SVG, PDF and 3D)
@@ -141,6 +164,15 @@ def motor_inner_end_x():
     return PLATE_W / 2 - BRK_T - GEARBOX_L - MOTOR_L - ENCODER_L
 
 
+def wire_slot_x_range():
+    """|x| range of the wire slot above one motor's encoder plug."""
+    return motor_inner_end_x() - 3.0, motor_inner_end_x() + CONNECTOR[0] + 0.5 + 3.0
+
+
+def track_width():
+    return PLATE_W + 2 * (WHEEL_GAP + WHEEL_W / 2)
+
+
 def standoff_positions():
     xs = PLATE_W / 2 - 8.0
     ys = PLATE_L / 2 - 8.0
@@ -177,13 +209,13 @@ def make_bottom_plate() -> Plate:
             x = side * (PLATE_W / 2 - row)
             for dy in (-BRK_HOLE_SPACING / 2, BRK_HOLE_SPACING / 2):
                 p.add(Slot(x, y + dy, BRK_SLOT_EXTRA, M3_CLEAR, 0.0))
-    # Wire pass-throughs above the encoder ends of each motor pair: wide
-    # enough for both encoder plugs (pointing up) to pass through.
-    conn_outer = motor_inner_end_x() + CONNECTOR[0] + 0.5
-    slot_w = 2 * (conn_outer + 3.0)
+    # Wire pass-throughs directly above each motor's encoder plug. Split left /
+    # right so the centre stays solid and the battery can sit over the axles.
+    x_in, x_out = wire_slot_x_range()
     for y in (WHEELBASE / 2, -WHEELBASE / 2):
-        p.add(RRect(0.0, y, slot_w, CONNECTOR[1] + 6.0, 4.0))
-        p.add(*zip_tie_pair(0.0, y + (CONNECTOR[1] + 6.0) / 2 + 6.0, 90.0))
+        for sx in (-1, 1):
+            p.add(RRect(sx * (x_in + x_out) / 2, y, x_out - x_in, CONNECTOR[1] + 6.0, 4.0))
+            p.add(*zip_tie_pair(sx * (x_out + 6.0), y, 0.0))
     # Battery straps
     for y in STRAP_Y:
         for sx in (-1, 1):
@@ -308,8 +340,17 @@ def write_dxf(plate: Plate, path: Path):
 # =============================================================================
 # SVG (mm units, hairline strokes: red = cut, blue = engrave)
 # =============================================================================
-def svg_paths(plate: Plate):
-    """Returns list of (layer, path_d) in plate coordinates with Y up."""
+def svg_paths(plate: Plate, margin: float):
+    """(layer, path_d) in SVG page coordinates: origin top-left, Y down, all
+    coordinates positive and no transforms - the simplest form for laser
+    software (LightBurn, LaserGRBL, RDWorks, Inkscape) to import."""
+    ox, oy = plate.w / 2 + margin, plate.h / 2 + margin
+
+    def P(x, y):  # plate coords (Y up, centred) -> page coords
+        return f"{x + ox:.3f},{oy - y:.3f}"
+
+    # Flipping Y mirrors every arc, so each sweep flag below is the mirror of
+    # the counter-clockwise direction the geometry is built in.
     out = []
 
     def rrect_d(x, y, w, h, r):
@@ -319,26 +360,27 @@ def svg_paths(plate: Plate):
             a0, a1 = math.radians(start), math.radians(start + 90)
             p0 = (cx + r * math.cos(a0), cy + r * math.sin(a0))
             p1 = (cx + r * math.cos(a1), cy + r * math.sin(a1))
-            d += (f"M{p0[0]:.3f},{p0[1]:.3f}" if i == 0 else f"L{p0[0]:.3f},{p0[1]:.3f}")
-            d += f"A{r:.3f},{r:.3f} 0 0 1 {p1[0]:.3f},{p1[1]:.3f}"
+            d += ("M" if i == 0 else "L") + P(*p0)
+            d += f"A{r:.3f},{r:.3f} 0 0 0 " + P(*p1)
         return d + "Z"
 
     out.append((CUT, rrect_d(0, 0, plate.w, plate.h, plate.r)))
     for f in plate.features:
         if isinstance(f, Circle):
             r = f.d / 2
-            out.append((f.layer, f"M{f.x + r:.3f},{f.y:.3f}A{r:.3f},{r:.3f} 0 1 1 {f.x - r:.3f},{f.y:.3f}"
-                                 f"A{r:.3f},{r:.3f} 0 1 1 {f.x + r:.3f},{f.y:.3f}Z"))
+            out.append((f.layer, "M" + P(f.x + r, f.y) + f"A{r:.3f},{r:.3f} 0 1 0 " + P(f.x - r, f.y)
+                        + f"A{r:.3f},{r:.3f} 0 1 0 " + P(f.x + r, f.y) + "Z"))
         elif isinstance(f, RRect):
             out.append((f.layer, rrect_d(f.x, f.y, f.w, f.h, f.r)))
         elif isinstance(f, Slot):
             c1, c2, r, a = slot_geometry(f)
             nx, ny = -math.sin(a) * r, math.cos(a) * r
-            out.append((f.layer, f"M{c1[0] + nx:.3f},{c1[1] + ny:.3f}L{c2[0] + nx:.3f},{c2[1] + ny:.3f}"
-                                 f"A{r:.3f},{r:.3f} 0 0 0 {c2[0] - nx:.3f},{c2[1] - ny:.3f}"
-                                 f"L{c1[0] - nx:.3f},{c1[1] - ny:.3f}A{r:.3f},{r:.3f} 0 0 0 {c1[0] + nx:.3f},{c1[1] + ny:.3f}Z"))
+            out.append((f.layer, "M" + P(c1[0] + nx, c1[1] + ny) + "L" + P(c2[0] + nx, c2[1] + ny)
+                        + f"A{r:.3f},{r:.3f} 0 0 1 " + P(c2[0] - nx, c2[1] - ny)
+                        + "L" + P(c1[0] - nx, c1[1] - ny)
+                        + f"A{r:.3f},{r:.3f} 0 0 1 " + P(c1[0] + nx, c1[1] + ny) + "Z"))
         elif isinstance(f, Polyline):
-            d = "M" + "L".join(f"{x:.3f},{y:.3f}" for x, y in f.points) + ("Z" if f.closed else "")
+            d = "M" + "L".join(P(x, y) for x, y in f.points) + ("Z" if f.closed else "")
             out.append((f.layer, d))
     return out
 
@@ -346,16 +388,16 @@ def svg_paths(plate: Plate):
 def write_svg(plate: Plate, path: Path):
     margin = 2.0
     w, h = plate.w + 2 * margin, plate.h + 2 * margin
+    # Pure red / pure blue match LightBurn's default layer colours exactly.
     colours = {CUT: "#ff0000", ENGRAVE: "#0000ff"}
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{w:.3f}mm" height="{h:.3f}mm" viewBox="{-w / 2:.3f} {-h / 2:.3f} {w:.3f} {h:.3f}">',
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{w:.3f}mm" height="{h:.3f}mm" viewBox="0 0 {w:.3f} {h:.3f}">',
         f"<!-- {plate.name}: {plate.w:g} x {plate.h:g} mm, {ACRYLIC_T:g} mm acrylic. red = cut, blue = engrave/score -->",
-        '<g transform="scale(1,-1)" fill="none" stroke-width="0.01">',
     ]
-    for layer, d in svg_paths(plate):
-        lines.append(f'<path stroke="{colours[layer]}" d="{d}"/>')
-    lines += ["</g>", "</svg>"]
+    for layer, d in svg_paths(plate, margin):
+        lines.append(f'<path fill="none" stroke="{colours[layer]}" stroke-width="0.01" d="{d}"/>')
+    lines.append("</svg>")
     path.write_text("\n".join(lines) + "\n")
 
 
@@ -506,6 +548,10 @@ def build_assembly(bottom: Plate, top: Plate):
         so = cq.Workplane("XY").center(x, y).polygon(6, 6.35).extrude(STANDOFF_H).translate((0, 0, ACRYLIC_T))
         parts[f"standoff_{i}"] = (so, (0.85, 0.7, 0.3, 1.0))
 
+    # battery straps: thin bands under the plate between each slot pair
+    for i, y in enumerate(STRAP_Y):
+        band = cq.Workplane("XY").box(2 * STRAP_X + STRAP_SLOT[0], STRAP_W, 1.5).translate((0, y, -0.75))
+        parts[f"strap_{i}"] = (band, (0.1, 0.1, 0.1, 1.0))
     # battery on the bottom deck
     bx, by, bz = BATTERY
     parts["battery"] = (cq.Workplane("XY").box(bx, by, bz).translate((0, 0, ACRYLIC_T + bz / 2)), (0.2, 0.35, 0.8, 1.0))
@@ -581,10 +627,81 @@ def run_checks(parts, bottom: Plate, top: Plate):
     end_gap = 2 * motor_inner_end_x()
     if end_gap < MOTOR_END_GAP_MIN:
         problems.append(f"only {end_gap:.1f} mm between opposing motor ends (< {MOTOR_END_GAP_MIN})")
+    # 5b. front and rear tyres must not touch
+    if WHEELBASE - WHEEL_D < WHEEL_TO_WHEEL_MIN:
+        problems.append(f"front/rear tyres only {WHEELBASE - WHEEL_D:.1f} mm apart")
+    # 5c. battery must not cover the wire slots
+    x_in, _ = wire_slot_x_range()
+    if BATTERY[0] / 2 + 1.0 > x_in:
+        problems.append("battery would cover the wire slots - narrower battery or wider plate")
+    # 5d. physics: spin-in-place torque and tip-over margin
+    phys = physics(parts)
+    if phys["turn_frac_stall"] > TURN_TORQUE_MAX_FRACTION:
+        problems.append(f"turning in place needs {phys['turn_kgcm']:.2f} kg.cm per wheel = "
+                        f"{phys['turn_frac_stall'] * 100:.0f}% of stall (> {TURN_TORQUE_MAX_FRACTION * 100:.0f}%)")
+    if phys["tip_margin"] < TIP_MARGIN_MIN:
+        problems.append(f"tip-over margin {phys['tip_margin']:.2f} (< {TIP_MARGIN_MIN}): it could tip under hard braking")
     # 6. battery fits between strap slots and under the top deck
     if BATTERY[0] / 2 > STRAP_X - STRAP_SLOT[0] / 2 - 0.5:
         problems.append("battery wider than the strap slots allow")
     return problems, clearance
+
+
+def mass_properties(parts):
+    """Total mass (g) and centre of gravity (mm) from the 3D parts."""
+    total = 0.0
+    moment = [0.0, 0.0, 0.0]
+
+    def add(m, c):
+        nonlocal total
+        total += m
+        for k in range(3):
+            moment[k] += m * c[k]
+
+    for name, (wp, _) in parts.items():
+        solid = wp.val()
+        if name.endswith("_plate"):
+            m = solid.Volume() * ACRYLIC_DENSITY
+        else:
+            key = next((k for k in sorted(MASSES_G, key=len, reverse=True) if name.startswith(k)), None)
+            if key is None:
+                raise KeyError(f"no mass for part {name}")
+            m = MASSES_G[key]
+        c = solid.Center()
+        add(m, (c.x, c.y, c.z))
+    add(WIRING_G, (0.0, 0.0, ACRYLIC_T + STANDOFF_H / 2))
+    return total, tuple(v / total for v in moment)
+
+
+def physics(parts, wheelbase=None, mass_cog=None):
+    """Spin-in-place torque and tip-over margin.
+
+    Spin in place (skid steer): the tyres must scrub sideways. With friction mu
+    the lateral forces at the axles (+/- L/2) resist with a moment
+    mu*m*g*L/2; the left/right drive forces (+/- B/2) must overcome it, so each
+    wheel needs a traction force  F = mu*m*g*L / (4*B)  and torque F*r.
+    (Traction itself is only sufficient while L/B < 1.)
+
+    Tip over: braking at deceleration a tips the robot about the front axle
+    when a > g*(L/2 - y_cog)/h. If that exceeds mu*g, the tyres slide first and
+    it cannot tip on a flat floor (margin > 1).
+    """
+    L = WHEELBASE if wheelbase is None else wheelbase
+    B = track_width()
+    mass_g, cog = mass_properties(parts) if mass_cog is None else mass_cog
+    g = 9.81
+    m = mass_g / 1000.0
+    ground_z = -BRK_AXIS_FROM_FLANGE - WHEEL_D / 2
+    h = (cog[2] - ground_z) / 1000.0
+    r = WHEEL_D / 2000.0
+    force = TYRE_MU * m * g * L / (4 * B)
+    torque_kgcm = force * r / 9.81 * 100.0
+    a_tip = g * min(L / 2 - cog[1], L / 2 + cog[1]) / 1000.0 / h
+    return {
+        "mass_g": mass_g, "cog": cog, "cog_h_mm": h * 1000.0, "L_over_B": L / B,
+        "turn_kgcm": torque_kgcm, "turn_frac_stall": torque_kgcm / MOTOR_STALL_KGCM,
+        "tip_margin": a_tip / (TYRE_MU * g), "a_tip": a_tip,
+    }
 
 
 def write_step(parts, path: Path):
@@ -606,17 +723,44 @@ def write_glb(parts, path: Path):
     assy.export(str(path), tolerance=0.05, angularTolerance=0.2)
 
 
+def sweep(parts):
+    """Wheelbase trade-off table (mass and CoG from the current design)."""
+    mc = mass_properties(parts)
+    print(f"\nWheelbase sweep  (mass {mc[0]:.0f} g, CoG height {physics(parts, mass_cog=mc)['cog_h_mm']:.0f} mm, "
+          f"track {track_width():g} mm, mu {TYRE_MU})")
+    print("  L mm   L/B   spin torque/wheel   % stall   tip margin   verdict")
+    for L in range(70, 151, 10):
+        p = physics(parts, wheelbase=L, mass_cog=mc)
+        issues = []
+        if L - WHEEL_D < WHEEL_TO_WHEEL_MIN:
+            issues.append("tyres touch")
+        if p["tip_margin"] < TIP_MARGIN_MIN:
+            issues.append("can tip")
+        if p["turn_frac_stall"] > TURN_TORQUE_MAX_FRACTION:
+            issues.append("weak turning")
+        print(f"  {L:4d}  {p['L_over_B']:.2f}   {p['turn_kgcm']:.2f} kg.cm         {p['turn_frac_stall'] * 100:5.0f}%"
+              f"      {p['tip_margin']:.2f}       {', '.join(issues) or 'ok'}{'   <- current' if L == WHEELBASE else ''}")
+
+
 def main():
     out = Path(__file__).resolve().parent / "out"
     out.mkdir(exist_ok=True)
     bottom, top, coupon = make_bottom_plate(), make_top_plate(), make_coupon()
 
     parts = build_assembly(bottom, top)
+    if "--sweep" in sys.argv:
+        sweep(parts)
+        return
     problems, clearance = run_checks(parts, bottom, top)
-    track = PLATE_W + 2 * (WHEEL_GAP + WHEEL_W / 2)
+    track = track_width()
+    phys = physics(parts)
     print(f"plates {PLATE_W:g} x {PLATE_L:g} mm, wheelbase {WHEELBASE:g} mm, track (wheel centres) {track:g} mm")
     print(f"ground clearance {clearance:.1f} mm, deck gap {STANDOFF_H:g} mm, "
           f"overall {track + WHEEL_W:g} W x {max(PLATE_L, WHEELBASE + WHEEL_D):g} L mm")
+    print(f"mass ~{phys['mass_g']:.0f} g, CoG {phys['cog_h_mm']:.0f} mm above ground ({phys['cog'][1]:+.1f} mm fore/aft), "
+          f"L/B {phys['L_over_B']:.2f}")
+    print(f"spin in place: {phys['turn_kgcm']:.2f} kg.cm per wheel ({phys['turn_frac_stall'] * 100:.0f}% of stall), "
+          f"tip-over margin {phys['tip_margin']:.2f}")
     if problems:
         print("\nDESIGN CHECK FAILED:")
         for p in problems:

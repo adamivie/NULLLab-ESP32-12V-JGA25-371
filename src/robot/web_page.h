@@ -142,8 +142,9 @@ function updateWheel(i, target, speed, duty) {
   const f = Math.max(-1, Math.min(1, speed / maxMps)), t = Math.max(-1, Math.min(1, target / maxMps));
   bar.style.left = (f >= 0 ? 50 : 50 + f * 50) + "%"; bar.style.width = Math.abs(f) * 50 + "%";
   tick.style.left = `calc(${50 + t * 50}% - 1px)`;
-  val.textContent = `${speed.toFixed(2)} m/s`;
-  val.title = `target ${target.toFixed(2)} m/s, motor duty ${Math.round(duty * 100)}%`;
+  // Speed and motor effort (duty): a wheel near 100 % is working at its limit.
+  val.textContent = `${speed.toFixed(2)} m/s · ${Math.round(Math.abs(duty) * 100)}%`;
+  val.title = `target ${target.toFixed(2)} m/s`;
 }
 
 // ---------- joystick ----------

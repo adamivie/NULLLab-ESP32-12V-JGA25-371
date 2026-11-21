@@ -111,12 +111,17 @@ const getLog = async () => (await (await fetch(URL + "log")).json());
   ({ log } = await getLog());
   check(log.some(l => l.text === "A 0"), "RESET sends disarm (acknowledge fault)");
 
-  // Page hidden -> gentle stop
-  await fetch(URL + "reset-log");
+  // Page hidden -> gentle stop, then silence. (A joystick message already in
+  // flight when the page hides may still arrive, so the heartbeat check only
+  // looks at a window that starts after the hide has settled.)
+  const before = (await getLog()).log.length;
   await b.evaluate(() => { Object.defineProperty(document, "hidden", { value: true, configurable: true }); document.dispatchEvent(new Event("visibilitychange")); });
-  await sleep(300);
+  await sleep(200);
   ({ log } = await getLog());
-  check(log.some(l => l.text === "A 0" && l.client === 2), "hiding the page sends a stop");
+  check(log.slice(before).some(l => l.text === "A 0" && l.client === 2), "hiding the page sends a stop");
+  await fetch(URL + "reset-log");
+  await sleep(400);
+  ({ log } = await getLog());
   check(!log.some(l => l.type === "Drive" && l.client === 2), "hidden page stops the heartbeat");
 
   // Screenshots for a visual check
