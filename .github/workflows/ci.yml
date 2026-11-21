@@ -54,6 +54,17 @@ jobs:
         run: python chassis.py
       - name: Committed cut files match the generator
         run: git diff --exit-code -- 'hardware/chassis/out/*.svg'
+      - name: Full detailed model (real board model fit check)
+        working-directory: hardware/chassis
+        run: python full_model.py
+      - name: Upload full model
+        uses: actions/upload-artifact@v4
+        with:
+          name: robot-full-model
+          path: |
+            hardware/chassis/out/robot_full.step
+            hardware/chassis/out/robot_full.stl
+            hardware/chassis/out/robot_full.glb
 
   firmware:
     name: Build firmware

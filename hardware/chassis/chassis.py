@@ -65,12 +65,13 @@ WHEEL_GAP = 5.0           # bracket face outer surface -> wheel inner face (scre
 # Maker-ESP32 v1.7x (from the board's official STEP model).
 # Mounted on the LOWER deck, centred between the axles, long side across the
 # robot (along X), so motor and encoder wires come straight up through the
-# wire slots next to it. The USB / DC-jack end faces the left side.
+# wire slots next to it. The DC-jack end faces the left side, next to the
+# battery-lead slot; the micro-USB port is on the opposite (right) end.
 BOARD_W, BOARD_L, BOARD_T = 56.0, 80.0, 1.6   # BOARD_L runs along X
 BOARD_HOLES = [(4, 4), (4, 52), (76, 4), (76, 52)]  # (along length, along width) from corner
 BOARD_HOLE_D = M3_CLEAR   # board holes are 4.65; M3 nylon screws are plenty
 BOARD_COMPONENT_H = 20.0  # tallest parts incl. Dupont plugs on the headers (clearance checks)
-USB_SIDE = -1             # -1: USB / DC jack face the robot's left side, +1: right
+DC_JACK_SIDE = -1         # -1: DC jack faces the robot's left side, +1: right
 
 # Battery: 3S 2200 mAh LiPo (~105 x 34 x 26 mm).
 #   "under": strapped beneath the lower deck between the axles (lowest centre of gravity)
@@ -213,8 +214,8 @@ def strap_slots():
 
 
 def power_slot():
-    """(x, y, w, h): battery lead up to the DC jack at the board's USB end."""
-    return (USB_SIDE * (BOARD_L / 2 + 12.0), 0.0, 10.0, 24.0)
+    """(x, y, w, h): battery lead up to the board's DC jack."""
+    return (DC_JACK_SIDE * (BOARD_L / 2 + 12.0), 0.0, 10.0, 24.0)
 
 
 def zip_tie_pair(x, y, angle=0.0):
@@ -261,7 +262,7 @@ def make_bottom_plate() -> Plate:
         for x in (-40.0, -20.0, 0.0, 20.0, 40.0):
             p.add(Circle(x, y, M3_CLEAR))
     # Visible beside the board, clear of every cut-out (checked in run_checks)
-    p.add(front_arrow(-USB_SIDE * 58.0, 18.0))
+    p.add(front_arrow(-DC_JACK_SIDE * 58.0, 18.0))
     return p
 
 

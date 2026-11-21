@@ -32,6 +32,40 @@ From below (battery strapped between the axles):
 
 ![underside](images/underside.png)
 
+## Full detailed model (for CAD programs)
+
+`full_model.py` builds the complete robot as real solid parts:
+
+- the plates with all their holes
+- brackets, motors (gearbox, D-shaft, encoder board, plug and wires)
+- treaded wheels with spoked rims and hex couplings
+- brass standoffs, every screw and nut
+- the battery with its straps and lead
+- NULLLAB's own 3D model of the Maker-ESP32, with every component
+
+All positions come from `chassis.py`, so the two models always agree. The
+script also checks the real board model against the plates, straps and
+wiring.
+
+![full model](images/full_model.png)
+
+![full model, top deck hidden](images/full_model_inside.png)
+
+| File | Open it with |
+|---|---|
+| `out/robot_full.step` | Any CAD program (SolidWorks, Fusion 360, Onshape, FreeCAD, Shapr3D...). Solid bodies, one named and coloured part each. **Try this first.** |
+| `out/robot_full.stl` | Anything that only takes meshes: 3D viewers, slicers, simpler modelling apps |
+| `out/robot_full.glb` | `viewer.html?model=robot_full` in a browser |
+
+These files are about 50 MB, so they aren't committed. Either download them
+from the latest CI run (the **robot-full-model** artifact on the Actions tab),
+or build them yourself:
+
+```sh
+cd hardware/chassis
+python full_model.py      # downloads the board model from NULLLAB's GitHub the first time
+```
+
 ## Files
 
 | File | Use |
@@ -163,7 +197,7 @@ under screw heads help.
    Thread each strap down through one slot of a pair and up through the other,
    leaving a loop hanging underneath for the battery.
 6. **Board:** fit the four nylon standoffs on the bottom plate and mount the
-   Maker-ESP32 across the robot, with its **USB / DC-jack end on the left**,
+   Maker-ESP32 across the robot, with its **DC-jack end on the left**,
    next to the long slot. The straps pass flat underneath it.
 7. **Wires:** bring each motor's cable up through the slot above it, plug it
    in (motor wires to the motor ports, encoder wires to the pins in
