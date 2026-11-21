@@ -208,6 +208,40 @@ page's wheel readouts while spinning in place: each shows the motor's duty
 don't hold for your surface. The fix is then a higher-torque gear ratio of the
 same motor (e.g. 1:21.3, ~280 RPM), which drops straight into this chassis.
 
+## Motor placement
+
+Every placement choice was checked against the model (`python chassis.py
+--sweep`, plus the summary printed by every run):
+
+| Choice | Why it's the best option |
+|---|---|
+| **Axles centred on the centre of gravity** (CoG at 0.0 mm fore/aft and sideways) | Each wheel carries exactly 25 % of the weight. Equal grip on all four means straight tracking and turns that pivot about the middle, with no lightly loaded wheel spinning out |
+| **Motors underslung** (brackets under the lower deck) | The motor axle height is fixed by the wheel radius, so mounting them on top would only push the deck down to 9 mm off the floor. Underneath leaves room for the battery below the deck and gives 19 mm ground clearance |
+| **Bracket faces flush with the plate sides** | Wheels as close to the body as the couplings allow: the narrowest robot for its track |
+| **Motors back-to-back, encoder plugs pointing up** | Plugs sit directly under the wire slots next to the controller: the shortest possible cables |
+| **Wheelbase 100 mm** | See [why 100 mm](#why-a-100-mm-wheelbase) |
+| **Track 196 mm** | A trade-off, see below |
+
+Sideways roll-over isn't a concern: the roll margin is 2.65 (it would slide
+long before it rolled).
+
+**Track width is the one real trade-off.** A wider track makes turning
+easier, but the robot gets wider:
+
+| Plate width | Track | Overall width | Spin torque per wheel | % of stall |
+|---|---|---|---|---|
+| 140 mm | 176 mm | 202 mm | 0.44 kg·cm | 49 % |
+| **160 mm** | **196 mm** | **222 mm** | **0.40 kg·cm** | **44 %** |
+| 180 mm | 216 mm | 242 mm | 0.36 kg·cm | 40 % |
+| 200 mm | 236 mm | 262 mm | 0.33 kg·cm | 37 % |
+
+The motors need at least 126 mm of plate width. The returns diminish: each
+extra 20 mm of width buys only about 4 % of stall torque. 160 mm keeps the
+robot compact. If you'd rather turn more easily and width doesn't matter,
+set `PLATE_W = 180` and regenerate; every check re-runs automatically. If
+turning really is too hard on your floor, the bigger lever is the motors'
+gear ratio (see above), not the chassis.
+
 ## Why the battery goes underneath
 
 `BATTERY_MOUNT` in `chassis.py` switches between the two layouts. Both pass

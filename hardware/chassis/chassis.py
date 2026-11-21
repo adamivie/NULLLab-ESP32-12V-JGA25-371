@@ -732,7 +732,7 @@ def mass_properties(parts):
     return total, tuple(v / total for v in moment)
 
 
-def physics(parts, wheelbase=None, mass_cog=None):
+def physics(parts, wheelbase=None, mass_cog=None, track=None):
     """Spin-in-place torque and tip-over margin.
 
     Spin in place (skid steer): the tyres must scrub sideways. With friction mu
@@ -746,7 +746,7 @@ def physics(parts, wheelbase=None, mass_cog=None):
     it cannot tip on a flat floor (margin > 1).
     """
     L = WHEELBASE if wheelbase is None else wheelbase
-    B = track_width()
+    B = track_width() if track is None else track
     mass_g, cog = mass_properties(parts) if mass_cog is None else mass_cog
     g = 9.81
     m = mass_g / 1000.0
@@ -756,7 +756,15 @@ def physics(parts, wheelbase=None, mass_cog=None):
     force = TYRE_MU * m * g * L / (4 * B)
     torque_kgcm = force * r / 9.81 * 100.0
     a_tip = g * min(L / 2 - cog[1], L / 2 + cog[1]) / 1000.0 / h
+    # sideways roll-over in a turn: same idea about the outer wheels
+    a_roll = g * min(B / 2 - cog[0], B / 2 + cog[0]) / 1000.0 / h
+    # static load on each wheel (lever rule from the CoG position)
+    fx = 0.5 + cog[0] / B
+    fy = 0.5 + cog[1] / L
+    loads = {"front-left": (1 - fx) * fy, "front-right": fx * fy,
+             "rear-left": (1 - fx) * (1 - fy), "rear-right": fx * (1 - fy)}
     return {
+        "roll_margin": a_roll / (TYRE_MU * g), "wheel_load_share": loads,
         "mass_g": mass_g, "cog": cog, "cog_h_mm": h * 1000.0, "L_over_B": L / B,
         "turn_kgcm": torque_kgcm, "turn_frac_stall": torque_kgcm / MOTOR_STALL_KGCM,
         "tip_margin": a_tip / (TYRE_MU * g), "a_tip": a_tip,
@@ -780,6 +788,21 @@ def write_glb(parts, path: Path):
     for name, (wp, rgba) in parts.items():
         assy.add(wp, name=name, color=cq.Color(*rgba))
     assy.export(str(path), tolerance=0.05, angularTolerance=0.2)
+
+
+def sweep_track(parts):
+    """Track-width trade-off: wider = easier turning but a wider robot."""
+    mc = mass_properties(parts)
+    min_w = 2 * (PLATE_W / 2 - motor_inner_end_x()) + MOTOR_END_GAP_MIN
+    print(f"\nTrack sweep at wheelbase {WHEELBASE:g} mm (plate width sets the track; motors need >= {min_w:.0f} mm)")
+    print("  plate W   track B   overall W   spin torque/wheel   % stall   roll margin")
+    for w in (130, 140, 150, 160, 170, 180, 200):
+        if w < min_w:
+            continue
+        b = w + 2 * (WHEEL_GAP + WHEEL_W / 2)
+        p = physics(parts, mass_cog=mc, track=b)
+        print(f"  {w:5d}     {b:5.0f}      {b + WHEEL_W:5.0f}       {p['turn_kgcm']:.2f} kg.cm         {p['turn_frac_stall'] * 100:5.0f}%"
+              f"      {p['roll_margin']:.2f}{'   <- current' if w == PLATE_W else ''}")
 
 
 def sweep(parts):
@@ -809,6 +832,7 @@ def main():
     parts = build_assembly(bottom, top)
     if "--sweep" in sys.argv:
         sweep(parts)
+        sweep_track(parts)
         return
     problems, clearance = run_checks(parts, bottom, top)
     track = track_width()
@@ -819,7 +843,8 @@ def main():
     print(f"mass ~{phys['mass_g']:.0f} g, CoG {phys['cog_h_mm']:.0f} mm above ground ({phys['cog'][1]:+.1f} mm fore/aft), "
           f"L/B {phys['L_over_B']:.2f}")
     print(f"spin in place: {phys['turn_kgcm']:.2f} kg.cm per wheel ({phys['turn_frac_stall'] * 100:.0f}% of stall), "
-          f"tip-over margin {phys['tip_margin']:.2f}")
+          f"tip-over margin {phys['tip_margin']:.2f}, roll-over margin {phys['roll_margin']:.2f}")
+    print("wheel load share: " + ", ".join(f"{k} {v * 100:.1f}%" for k, v in phys["wheel_load_share"].items()))
     if problems:
         print("\nDESIGN CHECK FAILED:")
         for p in problems:
