@@ -33,7 +33,7 @@ from pathlib import Path
 # =============================================================================
 # Parameters
 # =============================================================================
-ACRYLIC_T = 3.0           # sheet thickness (3 mm cast acrylic recommended)
+ACRYLIC_T = 6.35          # sheet thickness: 1/4" cast acrylic
 PLATE_W = 160.0           # plate width (X); bracket faces sit flush with the sides
 PLATE_L = 200.0           # plate length (Y)
 CORNER_R = 8.0
@@ -41,6 +41,15 @@ WHEELBASE = 100.0         # front-to-rear axle distance (chosen with `python cha
 STANDOFF_H = 40.0         # M3 hex standoffs between the decks (room to plug wires into the board)
 BOARD_STANDOFF_H = 10.0   # nylon M3 standoffs under the Maker-ESP32
 M3_CLEAR = 3.3            # M3 clearance hole (3.2-3.4 typical; see fit coupon)
+
+# Screw lengths follow the sheet thickness (smallest common M3 length that is long enough)
+M3_LENGTHS = (6, 8, 10, 12, 14, 16, 20, 25)
+M3_NUT_H = 2.4
+
+
+def m3_length(minimum):
+    return next(l for l in M3_LENGTHS if l >= minimum)
+
 
 # JGA25 25 mm L-bracket, per the bracket's listing (as corrected in the SolidCraft
 # model, adamivie/jetson-ugv-chassis esp32_bot @ b0c8823): 26 x 31 x 33.3 with a
@@ -59,6 +68,10 @@ BRK_HOLE_SPACING = BRK_HOLE_SQUARE  # flange hole columns (along Y)
 BRK_CENTER_HOLE_D = 10.0  # shaft hole in the face and centre hole in the flange
 BRK_FACE_SCREW_SPACING = 17.0  # gearbox face M3 holes, centre to centre
 BRK_SLOT_EXTRA = 3.0      # slots elongated by this much along X for tolerance
+# bracket to plate: through the plate and flange, a nylock nut, and 1 mm of thread showing
+BRK_SCREW_L = m3_length(ACRYLIC_T + BRK_T + M3_NUT_H + 1.0)
+# into a standoff / nylon standoff: through the plate plus >= 3.5 mm of thread engagement
+PLATE_SCREW_L = m3_length(ACRYLIC_T + 3.5)
 
 # JGA25-371 1:9.6 gearmotor (listing images)
 GEARBOX_D, GEARBOX_L = 25.0, 17.5
@@ -115,7 +128,11 @@ WHEEL_TO_WHEEL_MIN = 10.0     # gap between front and rear tyres
 TYRE_MU = 0.8                 # rubber on smooth floor ~0.7-1.0; carpet lower
 MOTOR_STALL_KGCM = 0.9        # listing table, 1:9.6 ratio (24 V table; treat as an estimate)
 MOTOR_RATED_KGCM = 0.2
-TURN_TORQUE_MAX_FRACTION = 0.5  # spin-in-place torque must stay below this fraction of stall
+# Spin-in-place torque must stay below this fraction of stall. 0.5 is the
+# comfortable target; it was raised to 0.6 when the owner chose 1/4" plates for
+# both decks (~1.54 kg, ~55 % of stall): turning in place works but loads the
+# 1:9.6 motors harder. A 1:21.3 gearbox would roughly halve that.
+TURN_TORQUE_MAX_FRACTION = 0.6
 TIP_MARGIN_MIN = 1.0          # tip-over acceleration / sliding acceleration (>1: slides before it tips)
 # Part masses in grams (acrylic is computed from its volume)
 MASSES_G = {
@@ -515,6 +532,82 @@ def write_sheet_svg(plates, path: Path):
 
 
 # =============================================================================
+# LightBurn project (.lbrn2)
+# =============================================================================
+# Layer numbers follow LightBurn's palette: 01 = blue, 02 = red - the same
+# colours as the SVG/DXF files. Power and speed are STARTING POINTS for a 40-60 W
+# CO2 laser and 1/4" cast acrylic: run a material test and adjust them on the
+# laser before cutting the plates.
+LBRN_LAYERS = {
+    ENGRAVE: dict(index=1, name="SCORE arrows - low power, set for your laser", kind="Cut",
+                  min_power=12, max_power=15, speed=150, passes=1, priority=0),
+    CUT: dict(index=2, name="CUT 1-4in acrylic - verify power and speed", kind="Cut",
+              min_power=85, max_power=90, speed=6, passes=1, priority=1),
+}
+
+
+def _lbrn_shapes(plate: Plate, ox: float, oy: float):
+    """XML for one plate, centred at (ox, oy) in LightBurn's Y-up mm coordinates."""
+    out = []
+
+    def xform(x, y, angle=0.0):
+        a = math.radians(angle)
+        c, s = round(math.cos(a), 9) + 0.0, round(math.sin(a), 9) + 0.0   # + 0.0 turns -0.0 into 0
+        return f"<XForm>{c:g} {s:g} {-s + 0.0:g} {c:g} {ox + x:.4f} {oy + y:.4f}</XForm>"
+
+    def rect(x, y, w, h, r, layer, angle=0.0):
+        r = min(r, w / 2, h / 2)
+        out.append(f'    <Shape Type="Rect" CutIndex="{LBRN_LAYERS[layer]["index"]}" W="{w:.4f}" H="{h:.4f}" Cr="{r:.4f}">\n'
+                   f'        {xform(x, y, angle)}\n    </Shape>')
+
+    rect(0, 0, plate.w, plate.h, plate.r, CUT)
+    for f in plate.features:
+        if isinstance(f, Circle):
+            out.append(f'    <Shape Type="Ellipse" CutIndex="{LBRN_LAYERS[f.layer]["index"]}" Rx="{f.d / 2:.4f}" Ry="{f.d / 2:.4f}">\n'
+                       f'        {xform(f.x, f.y)}\n    </Shape>')
+        elif isinstance(f, RRect):
+            rect(f.x, f.y, f.w, f.h, f.r, f.layer)
+        elif isinstance(f, Slot):  # stadium = rounded rect with full-radius ends
+            rect(f.x, f.y, f.length + f.width, f.width, f.width / 2, f.layer, f.angle)
+        elif isinstance(f, Polyline):
+            verts = "".join(f"V{ox + x:.4f} {oy + y:.4f}c0x1c1x1" for x, y in f.points)
+            n = len(f.points)
+            prims = "".join(f"L{i} {i + 1}" for i in range(n - 1)) + (f"L{n - 1} 0" if f.closed else "")
+            out.append(f'    <Shape Type="Path" CutIndex="{LBRN_LAYERS[f.layer]["index"]}">\n'
+                       f'        <XForm>1 0 0 1 0 0</XForm>\n'
+                       f'        <VertList>{verts}</VertList>\n        <PrimList>{prims}</PrimList>\n    </Shape>')
+    return out
+
+
+def write_lbrn2(plates, path: Path, gap: float = SHEET_GAP, margin: float = 2.0):
+    """Plates side by side (same layout as the SVG cut sheet) as a LightBurn project."""
+    used = {CUT} | {f.layer for p in plates for f in p.features}
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+             f'<LightBurnProject AppVersion="1.4.00" FormatVersion="1" MaterialHeight="{ACRYLIC_T:g}" '
+             f'MirrorX="False" MirrorY="False">',
+             '    <Notes ShowOnLoad="1" Notes="ESP32 4WD robot chassis, generated by hardware/chassis/chassis.py. '
+             f'Material: {ACRYLIC_T:g} mm cast acrylic. Layer 02 (red) = cut, layer 01 (blue) = score. '
+             'The power and speed values are starting points only - run a material test first, cut the fit '
+             'coupon, and keep Optimization > Cut inner shapes first enabled."/>']
+    for layer in (ENGRAVE, CUT):
+        if layer not in used:
+            continue
+        L = LBRN_LAYERS[layer]
+        lines += [f'    <CutSetting type="{L["kind"]}">',
+                  f'        <index Value="{L["index"]}"/>', f'        <name Value="{L["name"]}"/>',
+                  f'        <minPower Value="{L["min_power"]}"/>', f'        <maxPower Value="{L["max_power"]}"/>',
+                  f'        <speed Value="{L["speed"]}"/>', f'        <numPasses Value="{L["passes"]}"/>',
+                  f'        <priority Value="{L["priority"]}"/>', '    </CutSetting>']
+    height = max(p.h for p in plates)
+    x = margin
+    for p in plates:
+        lines += _lbrn_shapes(p, x + p.w / 2, margin + height / 2)
+        x += p.w + gap
+    lines.append("</LightBurnProject>")
+    path.write_text("\n".join(lines) + "\n")
+
+
+# =============================================================================
 # 1:1 PDF print template (Letter and A4 both fit)
 # =============================================================================
 def write_pdf(plates, path: Path):
@@ -681,13 +774,13 @@ def build_assembly(bottom: Plate, top: Plate):
             (s * (half_w - BRK_T / 2), y, -BRK_T - (BRK_FACE_H - BRK_T) / 2))
         face = face.cut(cyl_x(8.0, face_out - s * 5, face_out + s * 5, y, axis_z))
         parts[f"bracket_{tag}"] = (flange.union(face), (0.15, 0.15, 0.15, 1.0))
-        # flange screws: nut + screw tail under the flange (M3 x 10 from above)
+        # flange screws: nut + screw tail under the flange (M3 x BRK_SCREW_L from above)
         hw = None
         for row in BRK_HOLE_ROWS:
             for dy in (-BRK_HOLE_SPACING / 2, BRK_HOLE_SPACING / 2):
                 x = s * (half_w - row)
                 nut = cq.Workplane("XY").center(x, y + dy).polygon(6, 6.35).extrude(-2.4).translate((0, 0, -BRK_T))
-                tail = cq.Workplane("XY").center(x, y + dy).circle(1.5).extrude(-(10.0 - ACRYLIC_T - BRK_T)).translate((0, 0, -BRK_T))
+                tail = cq.Workplane("XY").center(x, y + dy).circle(1.5).extrude(-(BRK_SCREW_L - ACRYLIC_T - BRK_T)).translate((0, 0, -BRK_T))
                 piece = nut.union(tail)
                 hw = piece if hw is None else hw.union(piece)
         parts[f"bracket_screws_{tag}"] = (hw, (0.6, 0.6, 0.6, 1.0))
@@ -981,6 +1074,8 @@ def main():
         write_dxf(plate, out / f"{plate.name}.dxf")
         write_svg(plate, out / f"{plate.name}.svg")
     sheet_w, sheet_h = write_sheet_svg([bottom, top], out / "cut_sheet_both_plates.svg")
+    write_lbrn2([bottom, top], out / "chassis_plates.lbrn2")
+    write_lbrn2([coupon], out / "fit_test_coupon.lbrn2")
     print(f"cut sheet: both plates in {sheet_w:.0f} x {sheet_h:.0f} mm")
     write_pdf([bottom, top, coupon], out / "print_template_1to1.pdf")
     write_step(parts, out / "chassis_assembly.step")

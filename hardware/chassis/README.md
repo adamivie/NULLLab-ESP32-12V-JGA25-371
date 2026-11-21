@@ -14,13 +14,13 @@ A two-deck, laser-cut acrylic chassis:
 
 | | |
 |---|---|
-| Plates | 2 × 160 × 200 mm, 3 mm acrylic |
+| Plates | 2 × 160 × 200 mm, 1/4" (6.35 mm) cast acrylic |
 | Footprint | 228 mm wide (over tyres) × 200 mm long |
 | Wheelbase / track | 100 mm / 200.5 mm (wheel centres): see [why 100 mm](#why-a-100-mm-wheelbase) |
 | Ground clearance | 20 mm (bracket bottoms), 25 mm under the battery and front ToF bracket |
 | Deck spacing | 40 mm (board plus plugged-in wires, with room to spare) |
 | Battery | 3S LiPo up to ~110 × 34 × 26 mm, strapped under the lower deck |
-| Mass (estimated) | ~1.3 kg with the sensors, centre of gravity 49 mm above the floor |
+| Mass (estimated) | ~1.54 kg with the sensors, centre of gravity 55 mm above the floor |
 
 ![side view](images/side.png)
 
@@ -73,6 +73,7 @@ python full_model.py      # downloads the board model from NULLLAB's GitHub the 
 | `out/bottom_plate.svg` / `.dxf` | Laser cutting, lower deck (SVG for LightBurn) |
 | `out/top_plate.svg` / `.dxf` | Laser cutting, upper deck |
 | `out/fit_test_coupon.svg` / `.dxf` | **Cut this first.** A small test piece, see below |
+| `out/chassis_plates.lbrn2`, `out/fit_test_coupon.lbrn2` | **LightBurn projects** with the layers set up (power and speed are placeholders) |
 | `out/cut_sheet_both_plates.svg` | Both plates laid out together for one LightBurn job (needs 330 × 204 mm of material) |
 | `out/size_check_24x36.pdf` | **24 × 36 in sheet for a 24-inch plotter:** both plates and the coupon at 1:1 with outlines of the real parts, X and Y scale bars, renders and a checklist (`size_check_poster.py`) |
 | `out/print_template_1to1.pdf` | The same plates on Letter/A4 pages, one per page |
@@ -124,11 +125,19 @@ below).
 3. **Adjust if needed:** if anything was off, change the parameter in
    `chassis.py`, regenerate, and repeat step 2.
 4. **Plates:** cut `out/cut_sheet_both_plates.svg` (or the two plate files
-   one at a time). Use 3 mm cast acrylic, at least 330 × 204 mm with a margin.
+   one at a time). Use 1/4" (6.35 mm) cast acrylic, at least 330 × 204 mm with a margin.
 
 ## Cutting with LightBurn
 
-Use the **SVG** files: `File → Import`, or drag them into the workspace. They
+**Easiest: open the LightBurn projects.** `out/chassis_plates.lbrn2` has both
+plates and `out/fit_test_coupon.lbrn2` has the coupon. Their layers are already
+set up (02 red = cut, runs second; 01 blue = score, runs first), the material
+height is 6.35 mm, and every hole and slot is a native circle or rounded
+rectangle you can select. The power and speed in them are **placeholders**
+(90 % at 6 mm/s for a 40-60 W CO₂ laser): run a material test on your sheet and
+set them before cutting.
+
+Or use the **SVG** files: `File → Import`, or drag them into the workspace. They
 import at their true size in mm, and the colours land on LightBurn's default
 layers:
 
@@ -140,12 +149,10 @@ layers:
 - **Cut order:** in `Edit → Settings → Optimization`, keep **"Cut inner
   shapes first"** on (it's the default). The holes are then cut before each
   plate's outline frees it, so nothing shifts mid-job.
-- **Laser type matters:**
-  - **CO₂ laser:** cuts 3 mm cast acrylic of any colour in one pass.
-  - **Diode laser:** a blue diode beam goes straight through **clear and
-    light-coloured acrylic** without cutting it. Use **opaque black (or
-    another dark, opaque colour)** cast acrylic, expect several passes, and
-    use air assist.
+- **Laser type matters:** 1/4" acrylic needs a **CO₂ laser**, typically 40 W
+  or more, slow and at high power, sometimes in two passes. A diode laser
+  can't cut 6.35 mm acrylic, and can't cut clear acrylic at any thickness
+  (the beam passes straight through).
 - **Settings:** acrylic settings vary from machine to machine, so cut the
   fit-test coupon first. It's small, and it also confirms your scale (the
   40 mm line) and which hole size suits M3 screws.
@@ -163,8 +170,8 @@ workflow prefers DXF.
 
 ## Ordering instead
 
-- Material: **3 mm cast acrylic**. It cuts more cleanly and cracks less around
-  screws than extruded acrylic. Clear or any colour.
+- Material: **1/4" (6.35 mm) cast acrylic**. It cuts more cleanly and cracks
+  less around screws than extruded acrylic. Clear or any colour.
 - Any laser service that accepts DXF or SVG works, as does a makerspace laser.
   Upload the three files and tell them red = cut and blue = engrave (or score).
 
@@ -172,12 +179,12 @@ workflow prefers DXF.
 
 | Qty | Part | Notes |
 |---|---|---|
-| 1 | Bottom plate, top plate, fit coupon | 3 mm acrylic |
+| 1 | Bottom plate, top plate, fit coupon | 1/4" (6.35 mm) acrylic |
 | 4 | JGA25 L-brackets + motor screws | from the motor kit |
-| 16 | M3 × 10 screw + **M3 nylock nut** | brackets to the bottom plate |
+| 16 | **M3 × 14** screw + **M3 nylock nut** | brackets to the bottom plate (through 6.35 mm plate + 3.3 mm flange) |
 | 6 | M3 × 40 hex standoff, female–female | between the decks |
-| 12 | M3 × 6 screw | standoff ends |
-| 4 | M3 × 10 **nylon** standoff + 8 × M3 × 6 nylon screws | board on the lower deck (nylon can't short anything) |
+| 12 | **M3 × 10** screw | standoff ends (through the 6.35 mm plate) |
+| 4 | M3 × 10 **nylon** standoff, 4 × M3 × 6 + 4 × **M3 × 10** nylon screws | board on the lower deck: M3 × 6 through the board, M3 × 10 up through the plate |
 | 2 | 20 mm hook-and-loop strap, ~200 mm | battery |
 | ~10 | 3 mm cable ties | wire management |
 | 1 | 3S LiPo, ~2200 mAh, ≤ 110 × 34 × 26 mm | or a 12 V pack of similar size |
@@ -201,7 +208,7 @@ under screw heads help.
    the motors are sized for that orientation.
 3. **Brackets under the bottom plate.** The flange goes under the plate,
    pointing inwards, and the bracket face lines up with the plate's side edge.
-   Fit an M3 × 10 screw from the top and a nylock nut underneath. Before tightening,
+   Fit an M3 × 14 screw from the top and a nylock nut underneath. Before tightening,
    slide the bracket outward in its slots until the face is flush with the edge.
 4. **Wheels:** fit the couplings and wheels onto the shafts.
 5. **Battery straps first.** The straps run under the board, so fit them now.
@@ -233,7 +240,7 @@ little torque (about 0.9 kg·cm at stall), so turning is the limiting factor.
 Driving straight needs only a fraction of that.
 
 A shorter wheelbase also has a limit. The robot must not be able to tip over
-nose-first when it brakes hard. With the centre of gravity at 49 mm, the
+nose-first when it brakes hard. With the centre of gravity at 55 mm, the
 tyres must slide before it tips, which needs `(wheelbase / 2) / CoG height`
 above the tyre friction (about 0.8).
 
@@ -241,15 +248,22 @@ above the tyre friction (about 0.8).
 
 | Wheelbase | L / B | Spin torque per wheel | % of stall | Tip margin | |
 |---|---|---|---|---|---|
-| 80 mm | 0.40 | 0.34 kg·cm | 38 % | 0.97 | can tip |
-| 90 mm | 0.45 | 0.38 kg·cm | 42 % | 1.10 | little margin |
-| **100 mm** | **0.50** | **0.42 kg·cm** | **47 %** | **1.23** | **chosen** |
-| 110 mm | 0.55 | 0.47 kg·cm | 52 % | 1.36 | weak turning |
-| 130 mm | 0.65 | 0.55 kg·cm | 61 % | 1.61 | turns sluggishly |
+| 80 mm | 0.40 | 0.40 kg·cm | 44 % | 0.88 | can tip |
+| 90 mm | 0.45 | 0.45 kg·cm | 50 % | 0.99 | can tip |
+| **100 mm** | **0.50** | **0.50 kg·cm** | **55 %** | **1.11** | **chosen** |
+| 110 mm | 0.55 | 0.55 kg·cm | 61 % | 1.22 | weak turning |
+| 130 mm | 0.65 | 0.65 kg·cm | 72 % | 1.45 | turns sluggishly |
 
-These figures include the sensors: about 1.3 kg total, with the lidar raising
-the centre of gravity to 49 mm. 100 mm is the only wheelbase that keeps both
-turning effort under half of stall and a comfortable tip margin.
+These figures are for 1/4" plates with the sensors fitted: about 1.54 kg,
+with the centre of gravity at 55 mm. 100 mm is the only wheelbase that is
+both tip-safe and within the turning limit.
+
+**The 1/4" trade-off:** 1/4" plates weigh twice as much as 3 mm ones (about
+225 g each), so turning in place takes about 55 % of stall torque, above the
+50 % I'd normally aim for. The limit (`TURN_TORQUE_MAX_FRACTION`) was raised
+to 60 % for this deliberate choice. The robot turns fine but works its motors
+harder in spins, so avoid long spins on grippy floors. The same motor with a
+1:21.3 gearbox would roughly halve the load, at about 1 m/s top speed.
 
 How to read it:
 
@@ -280,7 +294,7 @@ Every placement choice was checked against the model (`python chassis.py
 | **Wheelbase 100 mm** | See [why 100 mm](#why-a-100-mm-wheelbase) |
 | **Track 196 mm** | A trade-off, see below |
 
-Sideways roll-over isn't a concern: the roll margin is 2.54 (it would slide
+Sideways roll-over isn't a concern: the roll margin is 2.28 (it would slide
 long before it rolled).
 
 **Track width is the one real trade-off.** A wider track makes turning
@@ -288,13 +302,13 @@ easier, but the robot gets wider:
 
 | Plate width | Track | Overall width | Spin torque per wheel | % of stall |
 |---|---|---|---|---|
-| 140 mm | 180 mm | 208 mm | 0.47 kg·cm | 52 % |
-| **160 mm** | **200.5 mm** | **228 mm** | **0.42 kg·cm** | **47 %** |
-| 180 mm | 220 mm | 248 mm | 0.38 kg·cm | 43 % |
-| 200 mm | 240 mm | 268 mm | 0.35 kg·cm | 39 % |
+| 140 mm | 180 mm | 208 mm | 0.55 kg·cm | 62 % |
+| **160 mm** | **200.5 mm** | **228 mm** | **0.50 kg·cm** | **55 %** |
+| 180 mm | 220 mm | 248 mm | 0.45 kg·cm | 50 % |
+| 200 mm | 240 mm | 268 mm | 0.42 kg·cm | 46 % |
 
 The motors need at least 126 mm of plate width. The returns diminish: each
-extra 20 mm of width buys only about 4 % of stall torque. 160 mm keeps the
+extra 20 mm of width buys only about 5 % of stall torque. 160 mm keeps the
 robot compact. If you'd rather turn more easily and width doesn't matter,
 set `PLATE_W = 180` and regenerate; every check re-runs automatically. If
 turning really is too hard on your floor, the bigger lever is the motors'
@@ -306,8 +320,8 @@ gear ratio (see above), not the chassis.
 
 | | Centre of gravity | Tip margin | Checks |
 |---|---|---|---|
-| **`"under"` (default):** strapped beneath the lower deck | **49 mm** | **1.23** | pass |
-| `"top"`: strapped on the top deck | 60 mm | 1.00 | fail: hits the lidar and IMU, and could tip |
+| **`"under"` (default):** strapped beneath the lower deck | **55 mm** | **1.11** | pass |
+| `"top"`: strapped on the top deck | 65 mm | 0.93 | fail: hits the lidar and IMU, and could tip |
 
 With the sensors fitted, underneath is the only workable place, and it's still
 easy to swap the battery from below. (Without sensors, `SENSORS = False`, the
@@ -350,7 +364,7 @@ design is broken**:
 - any two parts collide (motors, encoder plugs, bracket nuts, wheels, battery,
   battery straps, standoffs, board and its plugged-in wires)
 - the board would sit over the motor wire slots
-- spinning in place would need more than half the motors' stall torque
+- spinning in place would need more than `TURN_TORQUE_MAX_FRACTION` of the motors' stall torque (60 %)
 - the robot could tip over under hard braking
 - ground clearance is too low
 - a hole is within 2 mm of an edge or of another hole

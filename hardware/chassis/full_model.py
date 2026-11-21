@@ -160,7 +160,7 @@ def bracket_hardware(s, y):
     for row in C.BRK_HOLE_ROWS:
         for dy in (-C.BRK_HOLE_SPACING / 2, C.BRK_HOLE_SPACING / 2):
             x = s * (HALF - row)
-            sc = pan_screw_z(x, y + dy, C.ACRYLIC_T, True, 10.0)
+            sc = pan_screw_z(x, y + dy, C.ACRYLIC_T, True, C.BRK_SCREW_L)
             nt = hex_z(NUT_AF, x, y + dy, -T - NUT_H, -T, hole=3.0)
             screws = sc if screws is None else screws.union(sc)
             nuts = nt if nuts is None else nuts.union(nt)
@@ -242,8 +242,8 @@ def deck_standoffs():
     z0, z1 = C.ACRYLIC_T, C.ACRYLIC_T + C.STANDOFF_H
     for i, (x, y) in enumerate(C.standoff_positions()):
         so = hex_z(5.5, x, y, z0, z1, hole=2.5)
-        top = pan_screw_z(x, y, z1 + C.ACRYLIC_T, True, 6.0)
-        bot = pan_screw_z(x, y, 0.0, False, 6.0)
+        top = pan_screw_z(x, y, z1 + C.ACRYLIC_T, True, C.PLATE_SCREW_L)
+        bot = pan_screw_z(x, y, 0.0, False, C.PLATE_SCREW_L)
         parts.append((f"standoff_{i}", so, BRASS))
         parts.append((f"standoff_screws_{i}", top.union(bot), DARK_STEEL))
     return parts
@@ -254,7 +254,7 @@ def board_hardware(board_z):
     for i, (x, y) in enumerate(C.board_hole_positions()):
         so = hex_z(5.5, x, y, C.ACRYLIC_T, board_z, hole=2.5)
         top = pan_screw_z(x, y, board_z + C.BOARD_T, True, 5.0)
-        bot = pan_screw_z(x, y, 0.0, False, 5.0)
+        bot = pan_screw_z(x, y, 0.0, False, C.PLATE_SCREW_L)
         parts.append((f"board_standoff_{i}", so, NYLON))
         parts.append((f"board_screws_{i}", top.union(bot), NYLON))
     return parts

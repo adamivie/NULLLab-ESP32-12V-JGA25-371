@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="164.000mm" height="204.000mm" viewBox="0 0 164.000 204.000">
-<!-- bottom_plate: 160 x 200 mm, 3 mm acrylic. red = cut, blue = engrave/score -->
+<!-- bottom_plate: 160 x 200 mm, 6.35 mm acrylic. red = cut, blue = engrave/score -->
 <path fill="none" stroke="#ff0000" stroke-width="0.01" d="M162.000,10.000A8.000,8.000 0 0 0 154.000,2.000L10.000,2.000A8.000,8.000 0 0 0 2.000,10.000L2.000,194.000A8.000,8.000 0 0 0 10.000,202.000L154.000,202.000A8.000,8.000 0 0 0 162.000,194.000Z"/>
 <path fill="none" stroke="#ff0000" stroke-width="0.01" d="M8.000,58.350L11.000,58.350A1.650,1.650 0 0 1 11.000,61.650L8.000,61.650A1.650,1.650 0 0 1 8.000,58.350Z"/>
 <path fill="none" stroke="#ff0000" stroke-width="0.01" d="M8.000,42.350L11.000,42.350A1.650,1.650 0 0 1 11.000,45.650L8.000,45.650A1.650,1.650 0 0 1 8.000,42.350Z"/>
