@@ -37,6 +37,24 @@ jobs:
           name: ui-screenshots
           path: tools/ui_test/build/*.png
 
+  chassis:
+    name: Chassis design checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"   # version the generator was verified with
+          cache: pip
+          cache-dependency-path: hardware/chassis/requirements.txt
+      - name: Install
+        run: pip install -r hardware/chassis/requirements.txt
+      - name: Regenerate (fails on any collision / clearance problem)
+        working-directory: hardware/chassis
+        run: python chassis.py
+      - name: Committed cut files match the generator
+        run: git diff --exit-code -- 'hardware/chassis/out/*.svg'
+
   firmware:
     name: Build firmware
     runs-on: ubuntu-24.04

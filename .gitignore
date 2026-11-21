@@ -4,3 +4,5 @@ include/wifi_secrets.h
 host_tests/build/
 tools/ui_test/build/
 tools/ui_test/node_modules/
+hardware/chassis/.venv/
+hardware/chassis/__pycache__/

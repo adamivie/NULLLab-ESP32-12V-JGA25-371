@@ -33,6 +33,14 @@ on slopes and as the battery drains.
     firmware's real message parser.
   - CI builds both firmwares on every push.
 
+## 0. Build the chassis
+
+A laser-cut, two-deck acrylic chassis designed for exactly these parts is in
+**[hardware/chassis](hardware/chassis/README.md)**: cut files (DXF/SVG), a
+printable 1:1 check template, a 3D model, a parts list and assembly steps.
+
+<img src="hardware/chassis/images/assembly.png" width="520" alt="chassis render">
+
 ## 1. Wire it
 
 See **[docs/WIRING.md](docs/WIRING.md)**. In short:
@@ -47,6 +55,9 @@ See **[docs/WIRING.md](docs/WIRING.md)**. In short:
 Power the encoders (blue = +, black = GND) from **3.3 V**. Measure it first,
 because the docs disagree. Put the Motor/IO DIP switch on **Motor**, and
 connect a 3S LiPo or 12 V pack to the DC jack.
+
+The board can't measure battery voltage, so put a cheap **LiPo voltage alarm**
+on the battery's balance lead. Running a LiPo flat ruins it.
 
 ## 2. Install the tools
 
@@ -140,6 +151,7 @@ lib/RobotHw/                TB67H450FNG motor driver, PCNT quadrature encoder
 host_tests/                 unit tests for RobotCore     -> host_tests/run.sh
 tools/ui_test/              browser test of the web page -> tools/ui_test/run.sh
 docs/WIRING.md              wiring guide
+hardware/chassis/           acrylic chassis: generator, cut files, 3D model
 ```
 
 ## Tests
