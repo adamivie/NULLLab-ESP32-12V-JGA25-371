@@ -1,0 +1,12 @@
+{
+  "name": "robot-ui-test",
+  "private": true,
+  "description": "Drives the robot's web page in headless Chromium against a mock robot that validates every message with the firmware's real C++ parser.",
+  "scripts": {
+    "test": "./run.sh"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0",
+    "ws": "8.18.0"
+  }
+}

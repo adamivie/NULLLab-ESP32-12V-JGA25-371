@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  host-tests:
+    name: Control-logic unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: host_tests/run.sh
+
+  ui-test:
+    name: Web UI test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/ui_test/package-lock.json
+      - name: Install
+        working-directory: tools/ui_test
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run
+        working-directory: tools/ui_test
+        run: ./run.sh
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots
+          path: tools/ui_test/build/*.png
+
+  chassis:
+    name: Chassis design checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"   # version the generator was verified with
+          cache: pip
+          cache-dependency-path: hardware/chassis/requirements.txt
+      - name: Install
+        run: pip install -r hardware/chassis/requirements.txt
+      - name: Regenerate (fails on any collision / clearance problem)
+        working-directory: hardware/chassis
+        run: python chassis.py
+      - name: Committed cut files match the generator
+        run: git diff --exit-code -- 'hardware/chassis/out/*.svg'
+      - name: Full detailed model (real board model fit check)
+        working-directory: hardware/chassis
+        run: python full_model.py
+      - name: Upload full model
+        uses: actions/upload-artifact@v4
+        with:
+          name: robot-full-model
+          path: |
+            hardware/chassis/out/robot_full.step
+            hardware/chassis/out/robot_full.stl
+            hardware/chassis/out/robot_full.glb
+
+  firmware:
+    name: Build firmware
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ hashFiles('platformio.ini') }}
+      - name: Install PlatformIO
+        run: pip install "platformio==6.2.0"
+      - name: Build robot + bringup
+        run: pio run -e robot -e bringup

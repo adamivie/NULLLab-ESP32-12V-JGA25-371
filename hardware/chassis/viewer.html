@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Robot chassis 3D</title>
+<!--
+  Interactive 3D view of out/chassis_assembly.glb (regenerate with chassis.py).
+  Browsers block loading local files from file://, so serve this folder:
+      cd hardware/chassis && python3 -m http.server 8000
+  then open http://localhost:8000/viewer.html
+-->
+<style>
+  :root { --bg:#eef1f4; --fg:#1c2229; --panel:#ffffffd9; --line:#cfd6dd; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14181c; --fg:#e6ebf0; --panel:#1d232ad9; --line:#323b45; } }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:14px system-ui, sans-serif; }
+  canvas { display:block; }
+  #ui { position:fixed; left:12px; top:12px; background:var(--panel); border:1px solid var(--line); border-radius:10px;
+        padding:10px 12px; display:flex; flex-direction:column; gap:6px; max-width:calc(100vw - 48px); }
+  #ui b { font-size:15px; }
+  label { display:flex; gap:6px; align-items:center; cursor:pointer; }
+  #status { font-size:12px; opacity:.75; }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="ui">
+  <b>ESP32 4WD chassis</b>
+  <label><input type="checkbox" id="top" checked> Top deck</label>
+  <label><input type="checkbox" id="wheels" checked> Wheels</label>
+  <label><input type="checkbox" id="battery" checked> Battery</label>
+  <span id="status">loading…</span>
+</div>
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#eef1f4");
+const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 1, 5000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(250, 400, 300);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -300, right: 300, top: 300, bottom: -300, near: 10, far: 1500 });
+scene.add(sun);
+
+// The GLB is already Y-up (exporter converts from CAD Z-up), in mm.
+// CAD (x right, y forward, z up)  ->  three.js (x, z_cad, -y_cad).
+const root = new THREE.Group();
+scene.add(root);
+
+const groups = { top: [], wheels: [], battery: [] };
+const groundZ = -20.75 - 65 / 2;  // wheel contact (BRK_AXIS_FROM_FLANGE + WHEEL_D/2 in chassis.py)
+
+// ?model=robot_full loads the detailed model from full_model.py
+const modelName = new URLSearchParams(location.search).get("model") || "chassis_assembly";
+new GLTFLoader().load(`out/${modelName.replace(/[^a-z_]/g, "")}.glb`, (gltf) => {
+  root.add(gltf.scene);
+  gltf.scene.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = o.receiveShadow = true;
+    const m = o.material;
+    // CAD export marks everything fully metallic (renders black without an
+    // environment map): use plain plastic, glossy see-through acrylic.
+    if (m) { m.metalness = 0; m.roughness = 0.55; }
+    if (m && m.opacity < 1) { m.transparent = true; m.depthWrite = false; m.roughness = 0.15; }
+    let n = o; let name = "";
+    while (n) { name += " " + (n.name || ""); n = n.parent; }
+    if (/top_plate/.test(name)) groups.top.push(o);
+    if (/wheel/.test(name)) groups.wheels.push(o);
+    if (/battery/.test(name)) groups.battery.push(o);
+  });
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(600, 64), new THREE.ShadowMaterial({ opacity: 0.18 }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = groundZ;
+  ground.receiveShadow = true;
+  scene.add(ground);
+  setView(window.location.hash.slice(1) || "iso");
+  document.getElementById("status").textContent = "drag to orbit · scroll to zoom";
+  window.__ready = true;
+}, undefined, (e) => { document.getElementById("status").textContent = "could not load out/chassis_assembly.glb - serve this folder over http (see source)"; });
+
+function setView(v) {
+  const views = { iso: [-270, 200, -300], side: [-430, 30, 0], top: [0, 480, -1], front: [0, 60, -430], rear: [240, 190, 290], under: [-230, -170, -260] };
+  camera.position.set(...(views[v] || views.iso));
+  controls.target.set(0, 0, 0);
+  controls.update();
+}
+window.setView = setView;
+for (const id of ["top", "wheels", "battery"]) {
+  document.getElementById(id).addEventListener("change", (e) => groups[id].forEach((o) => (o.visible = e.target.checked)));
+}
+window.showGroup = (id, on) => { document.getElementById(id).checked = on; groups[id].forEach((o) => (o.visible = on)); };
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+</script>
+</body>
+</html>

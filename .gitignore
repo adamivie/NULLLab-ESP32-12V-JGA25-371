@@ -1,0 +1,11 @@
+.pio/
+.vscode/
+include/wifi_secrets.h
+host_tests/build/
+tools/ui_test/build/
+tools/ui_test/node_modules/
+hardware/chassis/.venv/
+# Full detailed model: ~50 MB, built by full_model.py (and attached to every CI run)
+hardware/chassis/out/robot_full.*
+hardware/chassis/out/_maker-esp32.step
+hardware/chassis/__pycache__/
