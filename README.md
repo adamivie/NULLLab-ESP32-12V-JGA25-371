@@ -47,12 +47,12 @@ printable 1:1 check template, a 3D model, a parts list and assembly steps.
 
 See **[docs/WIRING.md](docs/WIRING.md)**. In short:
 
-| Port | Motor (red/white) | Encoder yellow (A) | Encoder green (B) |
-|------|-------------------|--------------------|-------------------|
-| M1 | M1 terminal | GPIO 34 | GPIO 18 |
-| M2 | M2 terminal | GPIO 35 | GPIO 19 |
-| M3 | M3 terminal | GPIO 36 | GPIO 23 |
-| M4 | M4 terminal | GPIO 39 | GPIO 5  |
+| Port | Wheel | Motor (red/white) | Encoder yellow (A) | Encoder green (B) |
+|------|-------|-------------------|--------------------|-------------------|
+| M1 | rear-left   | M1 terminal | GPIO 19 | GPIO 23 |
+| M2 | front-left  | M2 terminal | GPIO 5  | GPIO 18 |
+| M3 | rear-right  | M3 terminal | GPIO 33 | GPIO 32 |
+| M4 | front-right | M4 terminal | GPIO 26 | GPIO 25 |
 
 Power the encoders (blue = +, black = GND) from **3.3 V**. Measure it first,
 because the docs disagree. Put the Motor/IO DIP switch on **Motor**, and

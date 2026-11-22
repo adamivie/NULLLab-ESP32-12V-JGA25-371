@@ -23,26 +23,38 @@ sets `invertMotor` in software.
 
 ## 2. Pin assignment
 
-| Port | Motor (fixed by board) | Yellow (A) | Green (B) |
-|------|------------------------|------------|-----------|
-| M1   | GPIO 27 / 13           | **GPIO 34** | **GPIO 18** |
-| M2   | GPIO 4 / 2             | **GPIO 35** | **GPIO 19** |
-| M3   | GPIO 17 / 12           | **GPIO 36** | **GPIO 23** |
-| M4   | GPIO 15 / 14           | **GPIO 39** | **GPIO 5**  |
+| Port | Wheel | Motor (fixed by board) | Yellow (A) | Green (B) |
+|------|-------|------------------------|------------|-----------|
+| M1   | rear-left   | GPIO 27 / 13 | **GPIO 19** | **GPIO 23** |
+| M2   | front-left  | GPIO 4 / 2   | **GPIO 5**  | **GPIO 18** |
+| M3   | rear-right  | GPIO 17 / 12 | **GPIO 33** | **GPIO 32** |
+| M4   | front-right | GPIO 15 / 14 | **GPIO 26** | **GPIO 25** |
+
+Layout, top view:
+
+```
+      FRONT
+   M2      M4
+   M1      M3
+      REAR
+```
 
 Where these pins are:
 
-- **GPIO 34, 35, 36, 39** are on the four 4-pin "ADC" header rows next to the
-  M1/M2 terminals. Each row has `G`, `V`, an analog pin (34/35/36/39) and a
-  digital pin (12/14/15/17). **Use only the G, V and 34–39 pins.**
-  **Never connect anything to the 12/14/15/17 pin of those rows**: those
-  are the M3/M4 motor-driver signals.
 - **GPIO 5, 18, 19, 23** are the `S` pins of the four 3-pin "SPI" headers
   (labelled IO5 / IO18 / IO19 / IO23 on the board).
+- **GPIO 25, 26, 32, 33** are the `S` pins of the four 3-pin servo headers.
+- **Never connect anything to the 12/14/15/17 pin of the 4-pin "ADC" header
+  rows**: those are the M3/M4 motor-driver signals.
 
-Why these pins: the motor ports use 8 GPIOs and the servo headers 4 more.
-These 8 are what's left over. That still leaves the servo headers (25, 26,
-32, 33) and I2C (21/22) free for a gripper, a display or an IMU later.
+Why these pins: the motor ports use 8 GPIOs. The encoders take the SPI and
+servo header signals, which keeps every encoder on a 3-pin header with its own
+`G`/`V`. The ADC rows (34/35/36/39) and I2C (21/22) stay free for sensors
+such as an IMU or a battery monitor. The servo headers are now taken, and
+34–39 are input-only, so add a PCA9685 board on I2C if you want servos later.
+
+GPIO 5 is a boot strapping pin, but it only selects SDIO timing, so an
+encoder holding it low at power-up does not stop the board booting.
 
 ## 3. Encoder power: check the voltage first
 
@@ -77,6 +89,7 @@ Each encoder draws only a few mA, so sharing 3.3 V pins is fine.
 
 - [ ] No wire on the 12 / 14 / 15 / 17 pins of the ADC rows
 - [ ] Encoder `V` pins measured at ≈3.3 V
+- [ ] Yellow/green wires on the GPIOs in the table above
 - [ ] Each encoder's black wire is on a GND pin
 - [ ] DIP switch on the Motor side
 - [ ] Robot propped up so the wheels can spin freely for the first tests

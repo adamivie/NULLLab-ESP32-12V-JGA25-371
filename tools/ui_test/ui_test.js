@@ -23,6 +23,9 @@ const getLog = async () => (await (await fetch(URL + "log")).json());
   check(await a.textContent("#state") === "DISARMED", "shows DISARMED after connect");
   check(await a.isEnabled("#arm"), "ARM enabled for the first (owner) client");
   check(await a.isHidden("#spectator"), "no spectator banner for owner");
+  const bars = await a.$$eval("#wheels .wheel", els => els.map(e => e.title));
+  check(JSON.stringify(bars) === JSON.stringify(["M2 front-left", "M4 front-right", "M1 rear-left", "M3 rear-right"]),
+        `wheel bars laid out as seen from above (${bars})`);
 
   // Heartbeat rate
   await fetch(URL + "reset-log");
@@ -103,7 +106,7 @@ const getLog = async () => (await (await fetch(URL + "log")).json());
   await sleep(200);
   await fetch(URL + "force-fault");
   await sleep(300);
-  check(await b.isVisible("#fault") && (await b.textContent("#faultText")).includes("M3 front-right"), "fault banner names the stalled wheel");
+  check(await b.isVisible("#fault") && (await b.textContent("#faultText")).includes("M3 rear-right"), "fault banner names the stalled wheel");
   check(await b.textContent("#arm") === "RESET", "button becomes RESET during fault");
   await fetch(URL + "reset-log");
   await b.click("#arm");

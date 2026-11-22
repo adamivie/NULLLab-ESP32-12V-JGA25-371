@@ -131,7 +131,10 @@ function toast(t) { const e = $("toast"); e.textContent = t; e.classList.add("sh
 
 // ---------- wheel bars ----------
 function buildWheels() {
-  const order = [0, 2, 1, 3].filter(i => i < names.length);  // usually FL FR / RL RR
+  // Lay the bars out like the robot seen from above (FL FR / RL RR), using the
+  // position in each wheel's name; unknown positions keep port order.
+  const rank = n => (/front/i.test(n) ? 0 : /rear/i.test(n) ? 2 : 1) * 3 + (/left/i.test(n) ? 0 : /right/i.test(n) ? 2 : 1);
+  const order = names.map((n, i) => i).sort((a, b) => rank(names[a]) - rank(names[b]) || a - b);
   $("wheels").innerHTML = order.map(i =>
     `<div class="wheel" title="${names[i]}"><div class="wl"><span>${names[i].replace(/^M\d /, "")}</span><span id="wv${i}"></span></div>` +
     `<div class="bar"><i id="wb${i}"></i><b id="wt${i}"></b></div></div>`).join("");

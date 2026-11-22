@@ -38,7 +38,7 @@ wss.on("connection", ws => {
   const id = robot.nextId++;
   clients.set(id, ws);
   if (!robot.owner) robot.owner = id;
-  ws.send(JSON.stringify({ hello: id, maxMps: 1.6, names: ["M1 front-left", "M2 rear-left", "M3 front-right", "M4 rear-right"] }));
+  ws.send(JSON.stringify({ hello: id, maxMps: 1.6, names: ["M1 rear-left", "M2 front-left", "M3 rear-right", "M4 front-right"] }));
   ws.on("close", () => { clients.delete(id); if (robot.owner === id) { robot.owner = 0; if (robot.state === "armed") robot.state = "disarmed"; } });
   ws.on("message", async raw => {
     const text = raw.toString();

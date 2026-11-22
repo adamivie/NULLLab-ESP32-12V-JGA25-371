@@ -39,13 +39,22 @@ struct WheelHw {
 
 constexpr int kWheelCount = 4;
 
+// Physical layout (top view, front at the top):
+//
+//        FRONT
+//     M2      M4
+//     M1      M3
+//        REAR
+//
 // CALIBRATE: replace this block with the one printed by the `dir` wizard.
+// The invert flags below are a first guess (right-side motors are mounted
+// mirrored); the wizard confirms or corrects them.
 constexpr WheelHw kWheels[kWheelCount] = {
     //  name             IN1 IN2  encA encB  invMotor invEnc  isLeft
-    {"M1 front-left",   27, 13,   34,  18,   false,   false,  true},
-    {"M2 rear-left",     4,  2,   35,  19,   false,   false,  true},
-    {"M3 front-right",  17, 12,   36,  23,   true,    false,  false},
-    {"M4 rear-right",   15, 14,   39,   5,   true,    false,  false},
+    {"M1 rear-left",    27, 13,   19,  23,   false,   false,  true},
+    {"M2 front-left",    4,  2,    5,  18,   false,   false,  true},
+    {"M3 rear-right",   17, 12,   33,  32,   true,    false,  false},
+    {"M4 front-right",  15, 14,   26,  25,   true,    false,  false},
 };
 
 // -----------------------------------------------------------------------------
