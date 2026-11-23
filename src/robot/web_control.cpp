@@ -28,9 +28,24 @@ const char* stateName(DriveState s) {
       return "disarmed";
   }
 }
+const char* batteryName(bool enabled, BatteryLevel level) {
+  if (!enabled) return "off";
+  switch (level) {
+    case BatteryLevel::Ok:
+      return "ok";
+    case BatteryLevel::Low:
+      return "low";
+    case BatteryLevel::Critical:
+      return "critical";
+    case BatteryLevel::Absent:
+    default:
+      return "absent";
+  }
+}
 }  // namespace
 
-WebControl::WebControl(DriveSystem& drive) : drive_(drive), server_(80), ws_("/ws") {}
+WebControl::WebControl(DriveSystem& drive, const BatterySensor& battery)
+    : drive_(drive), battery_(battery), server_(80), ws_("/ws") {}
 
 void WebControl::startWifi() {
   WiFi.persistent(false);  // don't wear flash with credentials
@@ -170,6 +185,9 @@ void WebControl::handleText(AsyncWebSocketClient* client, const char* text, size
           case ArmResult::HardwareError:
             reason = "Motor/encoder hardware failed to start - see serial log";
             break;
+          case ArmResult::BatteryCritical:
+            reason = "Battery is flat - replace or recharge it";
+            break;
         }
         if (reason != nullptr) {
           char buf[96];
@@ -185,8 +203,8 @@ void WebControl::handleText(AsyncWebSocketClient* client, const char* text, size
 
 void WebControl::sendHello(AsyncWebSocketClient* client) {
   char buf[256];
-  int n = snprintf(buf, sizeof(buf), "{\"hello\":%u,\"maxMps\":%.2f,\"names\":[", static_cast<unsigned>(client->id()),
-                   config::kMaxWheelSpeedMps);
+  int n = snprintf(buf, sizeof(buf), "{\"hello\":%u,\"maxMps\":%.2f,\"batCap\":%.2f,\"names\":[",
+                   static_cast<unsigned>(client->id()), config::kMaxWheelSpeedMps, config::kBatteryLowSpeedLimit);
   for (int i = 0; i < config::kWheelCount && n > 0 && n < static_cast<int>(sizeof(buf)); ++i) {
     n += snprintf(buf + n, sizeof(buf) - n, "%s\"%s\"", i ? "," : "", config::kWheels[i].name);
   }
@@ -200,13 +218,19 @@ void WebControl::sendHello(AsyncWebSocketClient* client) {
 
 void WebControl::sendTelemetry() {
   const DriveStatus s = drive_.status();
-  char buf[384];
+  const BatteryMonitor& b = battery_.monitor();
+  char buf[512];
+  // Battery: bs = off|absent|ok|low|critical, bv volts, ba amps, bc cells,
+  // bp rough % (-1 unknown), bmah mAh used, cap = speed held by low battery.
   int n = snprintf(buf, sizeof(buf),
                    "{\"st\":\"%s\",\"fw\":%d,\"link\":%d,\"lim\":%.2f,\"own\":%u,\"hw\":%d,\"rssi\":%d,"
-                   "\"ovr\":%u,\"loopUs\":%u,\"w\":[",
+                   "\"ovr\":%u,\"loopUs\":%u,\"bs\":\"%s\",\"bv\":%.2f,\"ba\":%.2f,\"bc\":%d,\"bp\":%d,"
+                   "\"bmah\":%.0f,\"cap\":%d,\"w\":[",
                    stateName(s.state), s.faultWheel, s.linkOk ? 1 : 0, s.speedLimit, static_cast<unsigned>(ownerId_.load()),
                    s.hardwareOk ? 1 : 0, WiFi.getMode() == WIFI_STA ? static_cast<int>(WiFi.RSSI()) : 0,
-                   static_cast<unsigned>(s.loopOverruns), static_cast<unsigned>(s.maxLoopUs));
+                   static_cast<unsigned>(s.loopOverruns), static_cast<unsigned>(s.maxLoopUs),
+                   batteryName(battery_.enabled(), b.level()), b.volts(), b.amps(), b.cells(), b.percent(), b.mahUsed(),
+                   s.batteryCapped ? 1 : 0);
   for (int i = 0; i < config::kWheelCount && n > 0 && n < static_cast<int>(sizeof(buf)); ++i) {
     n += snprintf(buf + n, sizeof(buf) - n, "%s[%.2f,%.2f,%.2f]", i ? "," : "", s.wheels[i].targetMps,
                   s.wheels[i].speedMps, s.wheels[i].duty);

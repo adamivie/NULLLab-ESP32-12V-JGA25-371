@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "BatteryMonitor.h"
 #include "ControlProtocol.h"
 #include "SkidSteer.h"
 #include "SlewRateLimiter.h"
@@ -334,6 +335,141 @@ static void testControlProtocol() {
   CHECK(parseMessage(nullptr, 3).type == MessageType::Invalid);
 }
 
+// ---------------------------------------------------------------------------
+// Feed a constant reading for `seconds` at 50 Hz.
+static void feed(BatteryMonitor& b, float volts, float amps, float seconds) {
+  for (int i = 0, n = (int)lroundf(seconds / 0.02f); i < n; ++i) b.update(volts, amps, 0.02f);
+}
+
+static void testBatteryMonitor() {
+  puts("BatteryMonitor");
+
+  // No battery -> Absent, nothing known.
+  {
+    BatteryMonitor b;
+    feed(b, 0.05f, 0.0f, 2.0f);
+    CHECK(b.level() == BatteryLevel::Absent);
+    CHECK(!b.present());
+    CHECK(b.cells() == 0);
+    CHECK(b.percent() == -1);
+  }
+
+  // Cell-count detection over the useful range of each pack.
+  {
+    struct Case { float v; int cells; };
+    const Case cases[] = {{8.40f, 2}, {7.0f, 2}, {12.6f, 3}, {11.1f, 3}, {9.9f, 3}, {9.0f, 3},
+                          {16.8f, 4}, {14.8f, 4}, {13.2f, 4}};
+    for (const Case& c : cases) {
+      BatteryMonitor b;
+      feed(b, c.v, 0.0f, 1.0f);
+      if (b.cells() != c.cells) printf("  %.1f V -> %d cells, expected %d\n", c.v, b.cells(), c.cells);
+      CHECK(b.cells() == c.cells);
+    }
+    BatteryMonitor early;
+    feed(early, 12.0f, 0.0f, 0.2f);
+    CHECK(early.cells() == 0);  // still settling
+    CHECK(early.level() == BatteryLevel::Ok);
+    BatteryConfig fixed;
+    fixed.cells = 3;
+    BatteryMonitor f(fixed);
+    CHECK(f.cells() == 3);
+    feed(f, 8.4f, 0.0f, 1.0f);   // a configured count is never overridden
+    CHECK(f.cells() == 3);
+  }
+
+  // Filter starts at the first reading, then follows.
+  {
+    BatteryMonitor b;
+    b.update(12.0f, 1.0f, 0.02f);
+    CHECK_NEAR(b.volts(), 12.0f, 1e-5);
+    feed(b, 11.0f, 1.0f, 10.0f);   // >> tau
+    CHECK_NEAR(b.volts(), 11.0f, 0.01f);
+  }
+
+  // A full pack: hard launches sag the voltage briefly - must stay OK.
+  {
+    BatteryMonitor b;
+    feed(b, 12.4f, 0.3f, 1.0f);
+    for (int k = 0; k < 20; ++k) {
+      feed(b, 9.3f, 8.0f, 0.4f);   // 3.1 V/cell for 0.4 s
+      feed(b, 12.2f, 1.0f, 2.0f);
+    }
+    CHECK(b.level() == BatteryLevel::Ok);
+  }
+
+  // Simulated 3S LiPo draining under load (internal resistance 0.15 ohm):
+  // LOW must come before CRITICAL, both latch, and resting voltage recovering
+  // afterwards must not clear them.
+  {
+    BatteryMonitor b;
+    feed(b, 12.5f, 0.2f, 1.0f);
+    CHECK(b.cells() == 3);
+    float restV = 12.5f, t = 0.0f, tLow = -1.0f, tCrit = -1.0f;
+    while (t < 2000.0f && tCrit < 0.0f) {
+      const float amps = 3.0f + 2.0f * sinf(t);          // varying driving load
+      b.update(restV - 0.15f * amps, amps, 0.02f);
+      restV -= 0.02f * 0.002f;                           // 2 mV/s drain
+      t += 0.02f;
+      if (tLow < 0.0f && b.level() == BatteryLevel::Low) tLow = t;
+      if (b.level() == BatteryLevel::Critical) tCrit = t;
+    }
+    CHECK(tLow > 0.0f);
+    CHECK(tCrit > tLow);
+    feed(b, 11.4f, 0.1f, 30.0f);                         // rested: 3.8 V/cell
+    CHECK(b.level() == BatteryLevel::Critical);          // still latched
+    feed(b, 0.0f, 0.0f, 1.0f);
+    CHECK(b.level() == BatteryLevel::Absent);
+    feed(b, 11.4f, 0.1f, 1.0f);                          // same pack reconnected
+    CHECK(b.level() == BatteryLevel::Critical);
+  }
+
+  // LOW needs to persist for lowDelayS (filtered).
+  {
+    BatteryMonitor b;
+    feed(b, 11.0f, 1.0f, 1.0f);                          // 3.67 V/cell
+    feed(b, 10.35f, 1.0f, 3.0f);                         // 3.45: filtered dips, < 5 s
+    feed(b, 11.0f, 1.0f, 3.0f);
+    CHECK(b.level() == BatteryLevel::Ok);
+    feed(b, 10.35f, 1.0f, 12.0f);
+    CHECK(b.level() == BatteryLevel::Low);
+    feed(b, 11.5f, 1.0f, 10.0f);
+    CHECK(b.level() == BatteryLevel::Low);               // latched
+  }
+
+  // Charge used: 2 A for 30 min = 1000 mAh; negative current is ignored.
+  {
+    BatteryMonitor b;
+    feed(b, 12.0f, 2.0f, 1800.0f);
+    CHECK_NEAR(b.mahUsed(), 1000.0f, 1.0f);
+    feed(b, 12.0f, -1.0f, 60.0f);
+    CHECK_NEAR(b.mahUsed(), 1000.0f, 1.0f);
+  }
+
+  // State of charge curve: endpoints, monotonic, sane mid-point.
+  CHECK(BatteryMonitor::lipoPercent(3.0f) == 0);
+  CHECK(BatteryMonitor::lipoPercent(4.25f) == 100);
+  CHECK(BatteryMonitor::lipoPercent(NAN) == 0);
+  CHECK(BatteryMonitor::lipoPercent(3.84f) == 50);
+  int previous = -1;
+  for (float v = 3.2f; v <= 4.3f; v += 0.005f) {
+    const int p = BatteryMonitor::lipoPercent(v);
+    CHECK(p >= previous);
+    previous = p;
+  }
+
+  // Garbage input never produces NaN state.
+  {
+    BatteryMonitor b;
+    feed(b, 12.0f, 1.0f, 1.0f);
+    b.update(NAN, INFINITY, 0.02f);
+    b.update(12.0f, 1.0f, NAN);
+    b.update(12.0f, 1.0f, -1.0f);
+    CHECK(isfinite(b.volts()) && isfinite(b.amps()) && isfinite(b.mahUsed()));
+    CHECK(b.present());  // a NaN sample is not "battery unplugged"
+    CHECK_NEAR(b.volts(), 12.0f, 1e-4);
+  }
+}
+
 int main() {
   testSlewRateLimiter();
   testVelocityEstimator();
@@ -341,6 +477,7 @@ int main() {
   testStallDetector();
   testSkidSteer();
   testControlProtocol();
+  testBatteryMonitor();
   printf("\n%d checks, %d failures\n", g_checks, g_failures);
   return g_failures == 0 ? 0 : 1;
 }

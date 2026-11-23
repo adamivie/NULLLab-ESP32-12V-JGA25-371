@@ -19,6 +19,7 @@ body{display:flex;flex-direction:column;user-select:none;-webkit-user-select:non
 padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 header{display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
 header h1{font-size:16px;margin:0 auto 0 0;font-weight:650}
+.pill[hidden]{display:none}
 .pill{padding:3px 10px;border-radius:99px;background:var(--panel);border:1px solid var(--line);font-size:13px;white-space:nowrap}
 .pill.ok{border-color:var(--green);color:var(--green)}.pill.warn{border-color:var(--amber);color:var(--amber)}
 .pill.bad{border-color:var(--red);color:var(--red)}.pill.info{border-color:var(--blue);color:#9dbcff}
@@ -58,11 +59,13 @@ opacity:0;transition:opacity .2s;pointer-events:none}
 <body>
 <header>
   <h1>MakerBot</h1>
+  <span id="bat" class="pill" hidden></span>
   <span id="conn" class="pill">connecting…</span>
   <span id="state" class="pill">—</span>
 </header>
 <div id="spectator" class="banner warn" hidden><span>Another device is driving.</span><button id="claim">Take control</button></div>
 <div id="fault" class="banner bad" hidden><span id="faultText"></span></div>
+<div id="batBanner" class="banner" hidden><span id="batText"></span></div>
 <main>
   <section id="stickWrap"><canvas id="stick" aria-label="Drive joystick"></canvas></section>
   <section id="side">
@@ -85,7 +88,7 @@ opacity:0;transition:opacity .2s;pointer-events:none}
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
-let ws = null, myId = 0, owner = false, state = "disarmed", maxMps = 1, names = [];
+let ws = null, myId = 0, owner = false, state = "disarmed", maxMps = 1, names = [], capPct = 50;
 let stick = {x: 0, y: 0}, keys = new Set(), limDragging = false, retryMs = 500;
 
 // ---------- connection ----------
@@ -102,7 +105,7 @@ function connect() {
 function send(text) { if (ws && ws.readyState === 1) ws.send(text); }
 
 function handle(m) {
-  if (m.hello !== undefined) { myId = m.hello; maxMps = m.maxMps || 1; names = m.names || []; buildWheels(); return; }
+  if (m.hello !== undefined) { myId = m.hello; maxMps = m.maxMps || 1; names = m.names || []; if (m.batCap) capPct = Math.round(m.batCap * 100); buildWheels(); return; }
   if (m.msg) { toast(m.msg); return; }
   if (m.st === undefined) return;
   state = m.st; owner = m.own === myId;
@@ -120,9 +123,35 @@ function handle(m) {
     `Wheel ${names[m.fw] || m.fw} stalled (blocked or jammed). Clear it, then press RESET.`;
   if (!limDragging) { $("lim").value = Math.round(m.lim * 100); $("limVal").textContent = `${Math.round(m.lim * 100)}% · ${(m.lim * maxMps).toFixed(2)} m/s`; }
   (m.w || []).forEach((w, i) => updateWheel(i, w[0], w[1], w[2]));
+  showBattery(m);
   draw();  // knob colour / hint depend on state and ownership
+  const present = m.bs === "ok" || m.bs === "low" || m.bs === "critical";
   $("info").textContent = `top speed ${maxMps.toFixed(2)} m/s` + (m.rssi ? ` · Wi-Fi ${m.rssi} dBm` : "") +
+    (present ? ` · ${m.ba.toFixed(1)} A · ${Math.round(m.bmah)} mAh used` : "") +
     ` · loop ${m.loopUs} µs` + (m.ovr ? ` · late ${m.ovr}` : "");
+}
+
+// ---------- battery ----------
+function showBattery(m) {
+  const pill = $("bat"), banner = $("batBanner");
+  pill.hidden = !m.bs || m.bs === "off";
+  banner.hidden = true;
+  if (pill.hidden) return;
+  if (m.bs === "absent") {
+    setPill("bat", "no batt", "");
+    pill.title = "No battery voltage: running on USB, or the PM02 is not wired";
+    return;
+  }
+  const volts = `${m.bv.toFixed(1)} V`;
+  setPill("bat", volts + (m.bp >= 0 ? ` ${m.bp}%` : ""), {ok: "ok", low: "warn", critical: "bad"}[m.bs] || "");
+  pill.title = `${m.bc || "?"}S · ${(m.bc ? m.bv / m.bc : 0).toFixed(2)} V/cell · ${m.ba.toFixed(1)} A · ${Math.round(m.bmah)} mAh used`;
+  if (m.bs === "low") {
+    banner.className = "banner warn"; banner.hidden = false;
+    $("batText").textContent = `Battery low (${volts}).` + (m.cap ? ` Speed capped at ${capPct}%.` : "") + " Recharge soon.";
+  } else if (m.bs === "critical") {
+    banner.className = "banner bad"; banner.hidden = false;
+    $("batText").textContent = `Battery flat (${volts}). The robot has stopped: replace or recharge the battery.`;
+  }
 }
 
 function setPill(id, text, cls) { const e = $(id); e.textContent = text; e.className = "pill " + cls; }

@@ -101,6 +101,36 @@ const getLog = async () => (await (await fetch(URL + "log")).json());
   check(await b.isHidden("#spectator") && await a.isVisible("#spectator"), "take control swaps driver");
   check(await b.isEnabled("#arm") && await a.isDisabled("#arm"), "only new driver can arm");
 
+  // Battery display
+  const bat = async q => { await fetch(URL + "battery?" + q); await sleep(300); };
+  check((await b.textContent("#bat")) === "11.8 V 63%" && (await b.getAttribute("#bat", "class")).includes("ok"),
+        `battery pill shows voltage and charge (${await b.textContent("#bat")})`);
+  check(await b.isHidden("#batBanner"), "no battery banner while OK");
+  check((await b.textContent("#info")).includes("2.3 A · 412 mAh used"), "current and charge used in the info line");
+  await b.locator("#lim").fill("80");
+  await bat("bs=low&bv=10.31&bp=6");
+  check(await b.isVisible("#batBanner") && (await b.textContent("#batText")).includes("Speed capped at 50%"),
+        "low battery: warning banner says speed is capped");
+  check((await b.getAttribute("#bat", "class")).includes("warn"), "low battery: pill turns amber");
+  await b.screenshot({ path: SHOTS + "/shot_battery_low.png" });
+  await b.click("#arm"); await sleep(300);
+  check((await getLog()).robot.state === "armed", "low battery: robot can still be armed");
+  await bat("bs=critical&bv=9.62&bp=0");
+  check((await getLog()).robot.state !== "armed", "critical battery: armed robot stops");
+  check((await b.textContent("#batText")).includes("replace or recharge"), "critical battery: banner says replace it");
+  check((await b.getAttribute("#bat", "class")).includes("bad"), "critical battery: pill turns red");
+  await b.click("#arm"); await sleep(300);
+  check((await getLog()).robot.state === "disarmed" && (await b.textContent("#toast")).includes("Battery is flat"),
+        "critical battery: arming refused with a reason");
+  await bat("bs=absent&bv=0&bp=-1");
+  check((await b.textContent("#bat")) === "no batt" && await b.isHidden("#batBanner"), "no battery: neutral pill, no banner");
+  check(!(await b.textContent("#info")).includes("mAh"), "no battery: no current/charge readout");
+  await bat("bs=off");
+  check(await b.isHidden("#bat"), "monitor disabled: pill hidden");
+  await bat("bs=ok&bv=11.84&bp=63");
+  await b.locator("#lim").fill("50");
+  await sleep(200);
+
   // Fault display + reset
   await b.click("#arm");
   await sleep(200);

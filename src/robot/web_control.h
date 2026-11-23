@@ -4,6 +4,7 @@
 
 #include <atomic>
 
+#include "../common/battery_sensor.h"
 #include "drive_system.h"
 
 // Wi-Fi (own access point, or your home network if wifi_secrets.h exists),
@@ -14,7 +15,7 @@
 // can always hit STOP - the emergency stop is accepted from every client.
 class WebControl {
  public:
-  explicit WebControl(DriveSystem& drive);
+  WebControl(DriveSystem& drive, const BatterySensor& battery);
 
   void begin();
   // Call from loop(): sends telemetry ~10x per second and housekeeping.
@@ -31,6 +32,7 @@ class WebControl {
   void sendTelemetry();
 
   DriveSystem& drive_;
+  const BatterySensor& battery_;
   AsyncWebServer server_;
   AsyncWebSocket ws_;
   std::atomic<uint32_t> ownerId_{0};

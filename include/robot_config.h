@@ -110,6 +110,26 @@ constexpr float kStallSpeed = 0.04f;
 constexpr float kStallTimeS = 1.0f;
 
 // -----------------------------------------------------------------------------
+// Battery monitor: Holybro PM02 (V3) analog power module (see docs/WIRING.md).
+// Its VOLTAGE and CURRENT signals go to two ADC1 pins (ADC2 stops working
+// while Wi-Fi is on). Check the readings with the bring-up `batt` command.
+// -----------------------------------------------------------------------------
+constexpr bool kBatteryMonitorEnabled = true;
+constexpr uint8_t kBatteryVoltagePin = 34;   // PM02 pin 4 (VOLTAGE)
+constexpr uint8_t kBatteryCurrentPin = 35;   // PM02 pin 3 (CURRENT)
+// Holybro's published scale factors. CALIBRATE kBatteryVoltsPerVolt with
+// `batt cal <volts measured with a multimeter>`.
+constexpr float kBatteryVoltsPerVolt = 18.182f;
+constexpr float kBatteryAmpsPerVolt = 36.364f;
+constexpr float kBatteryCurrentOffsetV = 0.0f;  // ADC volts at 0 A
+// Series cells (3 = 3S LiPo). 0 = detect at power-up. Setting it is safer: a
+// badly flat pack can be mistaken for one with fewer cells.
+constexpr int kBatteryCells = 3;
+constexpr float kCellLowV = 3.50f;       // per cell under load: warn + cap speed
+constexpr float kCellCriticalV = 3.30f;  // per cell under load: stop, refuse to arm
+constexpr float kBatteryLowSpeedLimit = 0.5f;  // speed cap while LOW
+
+// -----------------------------------------------------------------------------
 // Low-level hardware
 // -----------------------------------------------------------------------------
 constexpr uint32_t kControlPeriodMs = 10;        // 100 Hz speed loop

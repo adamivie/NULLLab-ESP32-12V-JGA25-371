@@ -12,12 +12,14 @@
 //   green            armed - the robot will move
 //   yellow, blinking armed but the joystick link dropped (robot is stopping)
 //   red, blinking    fault (stalled wheel or hardware error) - press RESET
+//   red, slow pulse  battery CRITICAL - replace the battery
+//   amber            disarmed with a LOW battery (instead of blue)
 class StatusLeds {
  public:
   StatusLeds();
   void begin();
   void showStarting();
-  void update(const DriveStatus& status, bool clientConnected, uint32_t nowMs);
+  void update(const DriveStatus& status, bool clientConnected, BatteryLevel battery, uint32_t nowMs);
 
  private:
   void fill(uint8_t r, uint8_t g, uint8_t b);

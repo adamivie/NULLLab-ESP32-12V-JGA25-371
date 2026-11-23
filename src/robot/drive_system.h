@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "../common/wheel_set.h"
+#include "BatteryMonitor.h"
 #include "SlewRateLimiter.h"
 #include "StallDetector.h"
 #include "VelocityEstimator.h"
@@ -24,8 +25,12 @@
 //       +----disarm()/softStop()---------------------------------------+
 //
 // Motors are actively braked whenever the robot is not ARMED or STOPPING.
+//
+// Battery (fed in with setBatteryLevel()): LOW caps the speed at
+// kBatteryLowSpeedLimit; CRITICAL ramps an armed robot to a stop (ARMED ->
+// STOPPING) and refuses to arm.
 enum class DriveState : uint8_t { Disarmed, Armed, Stopping, Fault };
-enum class ArmResult : uint8_t { Ok, NotCentred, NoLink, Faulted, HardwareError };
+enum class ArmResult : uint8_t { Ok, NotCentred, NoLink, Faulted, HardwareError, BatteryCritical };
 
 struct WheelTelemetry {
   float targetMps;
@@ -37,7 +42,8 @@ struct DriveStatus {
   DriveState state;
   int faultWheel;  // index of the stalled wheel, -1 if none
   bool linkOk;     // joystick messages arriving
-  float speedLimit;
+  float speedLimit;      // the driver's setting
+  bool batteryCapped;    // speed held at kBatteryLowSpeedLimit by a low battery
   WheelTelemetry wheels[config::kWheelCount];
   uint32_t loopOverruns;  // control periods that ran late (> 1.5x period)
   uint32_t maxLoopUs;     // worst-case control computation time
@@ -55,6 +61,7 @@ class DriveSystem {
   // Also acts as the heartbeat: the robot stops if these stop arriving.
   void setJoystick(float turn, float throttle);
   void setSpeedLimit(float limit);  // [kMinSpeedLimit, 1]
+  void setBatteryLevel(BatteryLevel level);
 
   ArmResult arm();
   void softStop();       // ramp to zero, then disarm; also clears a fault
@@ -84,6 +91,7 @@ class DriveSystem {
   uint32_t lastCommandMs_ = 0;
   bool everCommanded_ = false;
   float speedLimit_ = config::kDefaultSpeedLimit;
+  BatteryLevel battery_ = BatteryLevel::Absent;
   DriveState state_ = DriveState::Disarmed;
   bool brakeNow_ = false;  // set by emergencyStop(), consumed by the loop
   DriveStatus status_ = {};
