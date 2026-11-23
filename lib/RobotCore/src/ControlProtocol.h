@@ -14,6 +14,7 @@
 //   L <limit>             speed limit in [0.1, 1]
 //   S                     emergency stop (brake + disarm)
 //   C                     take control of the robot from another client
+//   P <n>                 ping; the robot answers {"pong":n} at once (latency display)
 //   T <expo> <turn>       driving feel: stick expo in [0, 1], turn rate in [0.2, 1]
 //   E <mode> <rgb1> <rgb2> <palette> <speed> <brightness> <movingOnly>
 //                         light effect settings, all whole numbers (colours
@@ -21,11 +22,11 @@
 //
 // Anything malformed, out of range or non-finite is rejected as Invalid; the
 // firmware never acts on a partially parsed command.
-enum class MessageType { Invalid, Drive, Arm, SpeedLimit, Stop, Claim, Leds, Feel };
+enum class MessageType { Invalid, Drive, Arm, SpeedLimit, Stop, Claim, Leds, Feel, Ping };
 
 struct Message {
   MessageType type = MessageType::Invalid;
-  float a = 0.0f;  // Drive: turn, Arm: 0/1, SpeedLimit: limit, Feel: expo
+  float a = 0.0f;  // Drive: turn, Arm: 0/1, SpeedLimit: limit, Feel: expo, Ping: n
   float b = 0.0f;  // Drive: throttle, Feel: turn rate
   LedConfig leds;  // Leds: the validated settings
 };

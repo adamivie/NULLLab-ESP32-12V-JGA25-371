@@ -9,7 +9,7 @@ int main() {
     size_t n = strlen(line);
     if (n && line[n-1] == '\n') line[--n] = 0;
     Message m = parseMessage(line, n);
-    const char* t[] = {"Invalid","Drive","Arm","SpeedLimit","Stop","Claim","Leds","Feel"};
+    const char* t[] = {"Invalid","Drive","Arm","SpeedLimit","Stop","Claim","Leds","Feel","Ping"};
     printf("%s %g %g\n", t[(int)m.type], m.a, m.b);
   }
 }

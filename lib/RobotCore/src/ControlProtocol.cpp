@@ -60,6 +60,13 @@ Message parseMessage(const char* data, size_t length) {
       msg.a = value;
       break;
     }
+    case 'P': {
+      float value = 0.0f;
+      if (!parseFloat(&cursor, &value) || !inRange(value, 0.0f, 16777215.0f) || value != floorf(value)) return invalid;
+      msg.type = MessageType::Ping;
+      msg.a = value;
+      break;
+    }
     case 'T': {
       float expo = 0.0f, turnGain = 0.0f;
       if (!parseFloat(&cursor, &expo) || !parseFloat(&cursor, &turnGain)) return invalid;

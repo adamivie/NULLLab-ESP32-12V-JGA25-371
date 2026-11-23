@@ -43,5 +43,5 @@ void loop() {
   const uint32_t now = millis();
   web.loop(now);
   leds.update(drive.status(), web.hasClients(), now);
-  delay(20);
+  delay(10);
 }

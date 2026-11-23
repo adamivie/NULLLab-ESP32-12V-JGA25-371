@@ -146,6 +146,7 @@ function send(text) { if (ws && ws.readyState === 1) ws.send(text); }
 function handle(m) {
   if (m.hello !== undefined) { myId = m.hello; maxMps = m.maxMps || 1; names = m.names || []; buildWheels(); return; }
   if (m.msg) { toast(m.msg); return; }
+  if (m.pong !== undefined) { pingGot(m.pong); return; }
   if (m.led) { if (Date.now() - ledSentAt > 1000) ledShow(m.led); return; }
   if (m.st === undefined) return;
   if (m.st === "fault" && state !== "fault" && navigator.vibrate) navigator.vibrate([200, 100, 200]);
@@ -171,6 +172,7 @@ function handle(m) {
   (m.w || []).forEach((w, i) => updateWheel(i, w[0], w[1], w[2]));
   draw();  // knob colour / hint depend on state and ownership
   $("info").textContent = `top speed ${maxMps.toFixed(2)} m/s` + (m.rssi ? ` · Wi-Fi ${m.rssi} dBm` : "") +
+    (pingMs !== null ? ` · ping ${Math.round(pingMs)} ms` + (pingWorst > 80 ? ` (worst ${Math.round(pingWorst)})` : "") : "") +
     ` · loop ${m.loopUs} µs` + (m.ovr ? ` · late ${m.ovr}` : "");
 }
 
@@ -227,11 +229,11 @@ function setFromPointer(e) {
   const r = cv.getBoundingClientRect(), R = Math.min(r.width, r.height) / 2 * 0.92 * (1 - 0.28);
   let x = (e.clientX - r.left - r.width / 2) / R, y = -(e.clientY - r.top - r.height / 2) / R;
   const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
-  stick = {x, y}; draw();
+  stick = {x, y}; draw(); stickChanged();
 }
 cv.addEventListener("pointerdown", e => { if (activePointer !== null) return; activePointer = e.pointerId; cv.setPointerCapture(e.pointerId); setFromPointer(e); });
 cv.addEventListener("pointermove", e => { if (e.pointerId === activePointer) setFromPointer(e); });
-const release = e => { if (e.pointerId !== activePointer) return; activePointer = null; stick = {x: 0, y: 0}; draw(); };
+const release = e => { if (e.pointerId !== activePointer) return; activePointer = null; stick = {x: 0, y: 0}; draw(); stickChanged(); };
 cv.addEventListener("pointerup", release); cv.addEventListener("pointercancel", release); cv.addEventListener("lostpointercapture", release);
 
 // ---------- keyboard ----------
@@ -245,7 +247,7 @@ addEventListener("keyup", e => { if (keyMap[e.code]) { keys.delete(keyMap[e.code
 function keyStick() {
   if (activePointer !== null) return;
   stick = {x: (keys.has("r") ? 1 : 0) - (keys.has("l") ? 1 : 0), y: (keys.has("u") ? 1 : 0) - (keys.has("d") ? 1 : 0)};
-  draw();
+  draw(); stickChanged();
 }
 
 // ---------- buttons ----------
@@ -316,7 +318,29 @@ ledLayout();
 // Joystick stream = heartbeat. If this page is hidden (phone locked, app
 // switched) the stream stops and the robot halts by itself; we also ask for a
 // gentle stop right away.
-setInterval(() => { if (owner && !document.hidden) send(`D ${stick.x.toFixed(3)} ${stick.y.toFixed(3)}`); }, 50);
+// A stick movement (above all: letting go) is sent at once, at most every
+// 20 ms; with the stick still, a heartbeat goes out every 50 ms.
+let stickSentAt = 0, stickTimer = null;
+function sendStick() {
+  if (!owner || document.hidden) return;
+  stickSentAt = performance.now(); send(`D ${stick.x.toFixed(3)} ${stick.y.toFixed(3)}`);
+}
+function stickChanged() {
+  const wait = 20 - (performance.now() - stickSentAt);
+  if (wait <= 0) sendStick();
+  else if (!stickTimer) stickTimer = setTimeout(() => { stickTimer = null; sendStick(); }, wait);
+}
+setInterval(() => { if (performance.now() - stickSentAt >= 50) sendStick(); }, 25);
+
+// Round-trip time to the robot, shown in the info line.
+let pingSeq = 0, pingSentAt = 0, pingMs = null, pingWorst = 0;
+function pingGot(n) {
+  if (n !== pingSeq) return;
+  const rtt = performance.now() - pingSentAt;
+  pingMs = pingMs === null ? rtt : pingMs * 0.7 + rtt * 0.3;
+  pingWorst = Math.max(pingWorst * 0.9, rtt);  // recent worst case, fades out
+}
+setInterval(() => { if (!document.hidden) { pingSeq = (pingSeq + 1) % 1000000; pingSentAt = performance.now(); send("P " + pingSeq); } }, 1000);
 document.addEventListener("visibilitychange", () => { if (document.hidden && owner) send("A 0"); });
 addEventListener("blur", () => { keys.clear(); keyStick(); });
 addEventListener("resize", resize);

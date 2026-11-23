@@ -5,6 +5,7 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <esp_mac.h>
+#include <esp_wifi.h>
 
 #include "ControlProtocol.h"
 #include "net_log.h"
@@ -16,7 +17,7 @@
 #endif
 
 namespace {
-constexpr uint32_t kTelemetryPeriodMs = 100;
+constexpr uint32_t kTelemetryPeriodMs = 50;  // 20 updates per second
 
 const char* stateName(DriveState s) {
   switch (s) {
@@ -77,7 +78,15 @@ void WebControl::startWifi() {
                   address_.c_str());
   }
 
-  WiFi.setSleep(false);  // power-save adds 100+ ms latency spikes
+  // Radio power save makes the robot answer only around Wi-Fi beacons, which
+  // adds up to ~100 ms to every command. Switch it off, and again after every
+  // reconnect, because the setting does not always survive one.
+  WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  WiFi.onEvent([](arduino_event_id_t) { esp_wifi_set_ps(WIFI_PS_NONE); }, ARDUINO_EVENT_WIFI_STA_GOT_IP);
+  wifi_ps_type_t powerSave = WIFI_PS_NONE;
+  esp_wifi_get_ps(&powerSave);
+  Log.printf("[wifi] radio power save: %s\n", powerSave == WIFI_PS_NONE ? "off" : "ON (expect laggy control)");
   if (MDNS.begin(config::kHostname)) MDNS.addService("http", "tcp", 80);
 }
 
@@ -134,6 +143,7 @@ void WebControl::onEvent(AsyncWebSocketClient* client, AwsEventType type, void* 
       // A slow phone must never get the connection closed on it just because
       // telemetry queued up; dropping a telemetry frame is harmless.
       client->setCloseClientOnQueueFull(false);
+      client->client()->setNoDelay(true);  // send small frames at once, do not batch them
       uint32_t expected = 0;
       ownerId_.compare_exchange_strong(expected, client->id());  // first client drives
       Log.printf("[ws] client %u connected from %s\n", static_cast<unsigned>(client->id()), client->remoteIP().toString().c_str());
@@ -169,6 +179,12 @@ void WebControl::handleText(AsyncWebSocketClient* client, const char* text, size
   // STOP works from any connected device.
   if (msg.type == MessageType::Stop) {
     drive_.emergencyStop();
+    return;
+  }
+  if (msg.type == MessageType::Ping) {  // answered for every client, driver or not
+    char buf[32];
+    const int n = snprintf(buf, sizeof(buf), "{\"pong\":%u}", static_cast<unsigned>(msg.a));
+    if (n > 0) client->text(buf, n);
     return;
   }
   if (msg.type == MessageType::Claim) {
@@ -283,7 +299,9 @@ void WebControl::loop(uint32_t nowMs) {
   ArduinoOTA.handle();
   Log.loop();
   if (nowMs - lastTelemetryMs_ >= kTelemetryPeriodMs) {
-    lastTelemetryMs_ = nowMs;
+    // Step by whole periods so the rate does not sag when loop() runs late.
+    lastTelemetryMs_ += kTelemetryPeriodMs;
+    if (nowMs - lastTelemetryMs_ >= kTelemetryPeriodMs) lastTelemetryMs_ = nowMs;
     if (ws_.count() > 0) sendTelemetry();
   }
   if (nowMs - lastCleanupMs_ >= 1000) {

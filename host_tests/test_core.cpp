@@ -333,6 +333,12 @@ static void testControlProtocol() {
   CHECK(parseMessage(withNul, 3).type == MessageType::Invalid);
   CHECK(parseMessage(nullptr, 3).type == MessageType::Invalid);
 
+  // Ping.
+  m = parse("P 42");
+  CHECK(m.type == MessageType::Ping);
+  CHECK_NEAR(m.a, 42.0f, 1e-6f);
+  for (const char* b : {"P", "P -1", "P 1.5", "P 16777216", "P 1 2"}) CHECK(parse(b).type == MessageType::Invalid);
+
   // Driving feel.
   m = parse("T 0.35 0.65");
   CHECK(m.type == MessageType::Feel);
