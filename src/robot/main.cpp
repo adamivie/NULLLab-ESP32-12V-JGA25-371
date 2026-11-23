@@ -11,28 +11,29 @@
 #include <Arduino.h>
 
 #include "drive_system.h"
+#include "net_log.h"
 #include "status_leds.h"
 #include "web_control.h"
 
 namespace {
 DriveSystem drive;
-WebControl web(drive);
 StatusLeds leds;
+WebControl web(drive, leds);
 }  // namespace
 
 void setup() {
   Serial.begin(115200);
   delay(200);
-  Serial.println("\n\n=== Maker-ESP32 robot ===");
+  Log.println("\n\n=== Maker-ESP32 robot ===");
 
   leds.begin();
   leds.showStarting();
 
   if (!drive.begin()) {
-    Serial.println("!! Drive hardware failed to initialise - the robot will refuse to arm properly.");
-    Serial.println("   Flash the bring-up firmware to diagnose (pio run -e bringup -t upload).");
+    Log.println("!! Drive hardware failed to initialise - the robot will refuse to arm properly.");
+    Log.println("   Flash the bring-up firmware to diagnose (pio run -e bringup -t upload).");
   }
-  Serial.printf("Top speed %.2f m/s, default limit %.0f%%\n", config::kMaxWheelSpeedMps,
+  Log.printf("Top speed %.2f m/s, default limit %.0f%%\n", config::kMaxWheelSpeedMps,
                 config::kDefaultSpeedLimit * 100.0f);
 
   web.begin();

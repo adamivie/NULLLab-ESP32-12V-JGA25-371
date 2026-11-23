@@ -346,9 +346,13 @@ counters are independent). Then press Enter. Type q + Enter to cancel.)");
   if (lowest < 0.5f * avg) {
     Serial.println("!! One wheel counted far less - was it turned 10 times? Is its encoder OK?");
   } else if ((highest - lowest) / avg > 0.03f) {
-    Serial.println("!  Wheels differ by more than 3% - probably a partial turn. Repeat for a cleaner number.");
+    Serial.println("!  Wheels differ by more than 3% - a partial turn, or motors with different gearboxes.");
+    Serial.println("   Repeat to check; a real difference is fine, the firmware scales each wheel.");
   }
-  Serial.printf("\nPaste into robot_config.h:\n  constexpr float kCountsPerWheelRev = %.1ff;\n", avg);
+  Serial.print("\nPaste into robot_config.h:\n  constexpr float kWheelCountsPerRev[kWheelCount] = {");
+  for (int i = 0; i < kN; ++i)
+    Serial.printf("%s%.1ff", i ? ", " : "", fabsf(static_cast<float>(wheels.encoder(i).count())) / kTurns);
+  Serial.println("};");
 }
 
 void cmdMaxSpeed() {
@@ -371,15 +375,15 @@ void cmdMaxSpeed() {
   float slowest = 1e9f;
   for (int i = 0; i < kN; ++i) {
     const float cps = static_cast<float>(c1[i] - c0[i]) / seconds;
-    const float rpm = cps / config::kCountsPerWheelRev * 60.0f;
-    Serial.printf("  %-16s %7.0f counts/s = %5.0f wheel rpm = %.2f m/s\n", wheels.hw(i).name, cps, rpm,
-                  cps * config::kMetersPerCount);
+    const float revPerS = cps / config::kWheelCountsPerRev[i];
+    Serial.printf("  %-16s %7.0f counts/s = %5.0f wheel rpm = %.2f m/s\n", wheels.hw(i).name, cps, revPerS * 60.0f,
+                  revPerS * config::kPi * config::kWheelDiameterM);
     if (cps <= 0) Serial.println("    !! not positive: run `dir` (directions) or check this encoder");
     slowest = fminf(slowest, cps);
   }
   if (slowest > 0) {
     const float suggestion = floorf(slowest * 0.92f / 10.0f) * 10.0f;
-    Serial.printf("\nPaste into robot_config.h (8%% below the slowest wheel so every wheel can reach it):\n"
+    Serial.printf("\nPaste into robot_config.h (8%% below the slowest motor so every motor can reach it):\n"
                   "  constexpr float kMaxWheelSpeedCps = %.0ff;\n",
                   suggestion);
     Serial.println("(Measured without load on the battery's present charge.)");
@@ -488,9 +492,11 @@ void cmdStep(const String& args) {
     const bool stepping = k * 10 < ms;
     const float tgt = stepping ? target : 0.0f;
     for (int i = 0; i < kN; ++i) {
-      measured[i] = est[i].update(wheels.encoder(i).count(), now) / config::kMaxWheelSpeedCps;
+      // Same scaling as the robot firmware: speeds are normalised WHEEL speeds.
+      measured[i] = est[i].update(wheels.encoder(i).count(), now) / config::wheelMaxCps(i);
       const bool active = which == 0 || which - 1 == i;
-      duty[i] = active ? ctrl[i].update(tgt, measured[i], 0.01f) : 0.0f;
+      const float scale = config::wheelMotorScale(i);
+      duty[i] = active ? ctrl[i].update(tgt * scale, measured[i] * scale, 0.01f) : 0.0f;
       wheels.motor(i).setDuty(duty[i]);
     }
     Serial.printf("%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", k * 10, tgt, ctrl[probe].reference(),
@@ -561,8 +567,9 @@ void setup() {
   Serial.println("Motors need 6-16 V on the DC jack with the power switch ON.");
   Serial.println("Ports M3/M4 also need the Motor/IO DIP switch on the MOTOR side.");
   if (!wheels.begin()) Serial.println("!! Hardware setup reported errors (see above).");
-  Serial.printf("Config: %.1f counts/rev, max %.0f counts/s (%.2f m/s)\n", config::kCountsPerWheelRev,
-                config::kMaxWheelSpeedCps, config::kMaxWheelSpeedMps);
+  Serial.printf("Config: counts/rev %.1f %.1f %.1f %.1f, max %.0f counts/s (%.2f m/s)\n",
+                config::kWheelCountsPerRev[0], config::kWheelCountsPerRev[1], config::kWheelCountsPerRev[2],
+                config::kWheelCountsPerRev[3], config::kMaxWheelSpeedCps, config::kMaxWheelSpeedMps);
   cmdHelp();
   Serial.print("\n> ");
 }

@@ -88,7 +88,7 @@ Prop the robot up so the wheels spin freely, then run these in order:
 | `enc` | Turn each wheel by hand; its count should change smoothly both ways | – |
 | `dir` | Spins each port briefly. You answer which wheel turned and whether it went forward. It also detects swapped encoder cables. | the whole `kWheels` block |
 | *(re-flash bring-up)* | so the next tests use the new directions | – |
-| `cal` | Turn every wheel 10 times by hand | `kCountsPerWheelRev` |
+| `cal` | Turn every wheel 10 times by hand | `kWheelCountsPerRev` (one value per wheel; mismatched gearboxes are fine) |
 | `maxspeed` | Full duty for 2 s | `kMaxWheelSpeedCps` |
 | `friction` | Finds the duty where each wheel starts moving | `g.kS` |
 | `step 0 50` | Closed-loop step test on all wheels, with a summary and CSV | gains, only if needed |
@@ -116,7 +116,36 @@ To use your home Wi-Fi instead, copy `include/wifi_secrets.example.h` to
 **http://makerbot.local**, or at the IP shown on the serial monitor. If it
 can't connect, it falls back to its own network.
 
+### Settings on the page
+
+- **Speed limit, stick softness (expo) and turn rate** are sliders. They are
+  saved on the robot and survive a restart.
+- **Lights**: pick an effect for the four LEDs: solid colour, pulse, blink,
+  spin (fading or stepping), front/back colours, palette sweep or rainbow.
+  Animated effects can run all the time or only while the robot moves; spin
+  follows the direction of travel. The choice is saved on the robot.
+  If spin does not run in a circle, or the front colour shows at the back,
+  set `kLedRingPosition` in `robot_config.h` to match where the LEDs sit.
+
+### Updates and log over Wi-Fi
+
+Once the robot firmware is on the board, the USB cable is optional:
+
+```sh
+pio run -e robot_ota -t upload          # add --upload-port <robot IP> if makerbot.local is not found
+telnet makerbot.local                   # live log (the last 4 kB are replayed on connect)
+```
+
+The update password is `kOtaPassword` in `robot_config.h`; it must match
+`upload_flags` in `platformio.ini`. The robot brakes and refuses to drive
+while an update is in progress. Your computer's firewall must allow incoming
+connections to PlatformIO's Python, because the robot connects back to it.
+The bring-up firmware has neither feature: flash it over USB.
+
 ### Status LEDs
+
+These show in the default "Status colours" light mode. The red and yellow
+warnings show in every mode.
 
 | Colour | Meaning |
 |---|---|

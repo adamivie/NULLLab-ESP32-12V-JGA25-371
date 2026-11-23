@@ -332,6 +332,135 @@ static void testControlProtocol() {
   const char withNul[] = {'S', '\0', 'x'};
   CHECK(parseMessage(withNul, 3).type == MessageType::Invalid);
   CHECK(parseMessage(nullptr, 3).type == MessageType::Invalid);
+
+  // Driving feel.
+  m = parse("T 0.35 0.65");
+  CHECK(m.type == MessageType::Feel);
+  CHECK_NEAR(m.a, 0.35f, 1e-6f);
+  CHECK_NEAR(m.b, 0.65f, 1e-6f);
+  for (const char* b : {"T", "T 0.5", "T 1.1 0.5", "T -0.1 0.5", "T 0.5 0.1", "T 0.5 1.5", "T 0.5 0.5 1"}) {
+    CHECK(parse(b).type == MessageType::Invalid);
+  }
+
+  // Light effect settings: mode rgb1 rgb2 palette speed brightness movingOnly.
+  m = parse("E 4 16711680 255 6 100 255 1");
+  CHECK(m.type == MessageType::Leds);
+  CHECK(m.leds.mode == LedMode::SpinFade && m.leds.color1 == 0xFF0000 && m.leds.color2 == 0x0000FF);
+  CHECK(m.leds.palette == LedPalette::Custom && m.leds.speed == 100 && m.leds.brightness == 255 && m.leds.movingOnly);
+  for (const char* b : {"E", "E 4 0 0 0 50 40", "E 9 0 0 0 50 40 1", "E 4 16777216 0 0 50 40 1", "E 4 0 0 7 50 40 1",
+                        "E 4 0 0 0 0 40 1", "E 4 0 0 0 101 40 1", "E 4 0 0 0 50 0 1", "E 4 0 0 0 50 256 1",
+                        "E 4 0 0 0 50 40 2", "E 4.5 0 0 0 50 40 1", "E -1 0 0 0 50 40 1", "E 4 0 0 0 50 40 1 1"}) {
+    const bool rejected = parse(b).type == MessageType::Invalid;
+    if (!rejected) printf("  accepted bad message: '%s'\n", b);
+    CHECK(rejected);
+  }
+}
+
+static bool sameColor(LedRgb c, uint32_t hex) {
+  return c.r == ((hex >> 16) & 0xFF) && c.g == ((hex >> 8) & 0xFF) && c.b == (hex & 0xFF);
+}
+
+static void testLedEffects() {
+  LedConfig cfg;
+  cfg.color1 = 0xFF0000;
+  cfg.color2 = 0x0000FF;
+  cfg.speed = 50;
+  LedMotion still, forward, reverse, right;
+  forward.forward = 0.5f;
+  forward.moving = true;
+  reverse.forward = -0.5f;
+  reverse.moving = true;
+  right.turn = 0.5f;
+  right.moving = true;
+  LedRgb px[kLedRingSize];
+  LedClock clock;
+
+  // Settings survive a round trip through the wire/storage fields.
+  uint32_t fields[kLedConfigFields];
+  LedConfig back;
+  cfg.mode = LedMode::PaletteSweep;
+  ledConfigToFields(cfg, fields);
+  CHECK(ledConfigFromFields(fields, &back));
+  CHECK(back.mode == cfg.mode && back.color1 == cfg.color1 && back.color2 == cfg.color2 && back.speed == cfg.speed);
+
+  // "Moving only": the clock is frozen at rest and runs while moving.
+  cfg.mode = LedMode::Pulse;
+  cfg.movingOnly = true;
+  clock.advance(cfg, still, 0.5f);
+  CHECK(clock.phase == 0.0f);
+  clock.advance(cfg, forward, 0.5f);
+  CHECK(clock.phase > 0.0f);
+  // Reversing or turning left runs the animation the other way.
+  LedClock a, b;
+  a.phase = b.phase = 10.0f;
+  a.advance(cfg, forward, 0.1f);
+  b.advance(cfg, reverse, 0.1f);
+  CHECK(a.phase > 10.0f && b.phase < 10.0f);
+  // Without "moving only" it always runs.
+  cfg.movingOnly = false;
+  LedClock c;
+  c.advance(cfg, still, 0.5f);
+  CHECK(c.phase > 0.0f);
+
+  // Solid: every LED is colour 1.
+  cfg.mode = LedMode::Solid;
+  renderLeds(cfg, still, clock, px);
+  for (const LedRgb& p : px) CHECK(sameColor(p, 0xFF0000));
+
+  // Pulse at rest (moving only) is a steady dim colour 1; never brighter than colour 1.
+  cfg.mode = LedMode::Pulse;
+  cfg.movingOnly = true;
+  renderLeds(cfg, still, clock, px);
+  CHECK(px[0].r > 0 && px[0].r < 255 && px[0].g == 0 && px[0].b == 0);
+
+  // Blink alternates between the two colours.
+  cfg.mode = LedMode::Blink;
+  clock.phase = 0.25f;
+  renderLeds(cfg, forward, clock, px);
+  CHECK(sameColor(px[0], 0xFF0000));
+  clock.phase = 0.75f;
+  renderLeds(cfg, forward, clock, px);
+  CHECK(sameColor(px[0], 0x0000FF));
+
+  // Spin (blink): exactly one LED is colour 1 and it moves clockwise.
+  cfg.mode = LedMode::SpinBlink;
+  for (int step = 0; step < kLedRingSize; ++step) {
+    clock.phase = (step + 0.5f) / kLedRingSize;
+    renderLeds(cfg, right, clock, px);
+    for (int i = 0; i < kLedRingSize; ++i) CHECK(sameColor(px[i], i == step ? 0xFF0000 : 0x0000FF));
+  }
+
+  // Spin (fade): the head is the brightest LED.
+  cfg.mode = LedMode::SpinFade;
+  cfg.color2 = 0x000000;
+  clock.phase = 2.0f / kLedRingSize;  // head exactly on LED 2
+  renderLeds(cfg, right, clock, px);
+  CHECK(px[2].r == 255 && px[1].r < px[2].r && px[3].r < px[1].r);
+
+  // Front/back: front LEDs colour 1, rear colour 2; the leading end is brighter.
+  cfg.mode = LedMode::FrontBack;
+  cfg.color2 = 0x0000FF;
+  renderLeds(cfg, forward, clock, px);
+  CHECK(px[0].r == 255 && px[1].r == 255 && px[0].b == 0);
+  CHECK(px[2].b > 0 && px[2].b < 255 && px[3].r == 0);
+  renderLeds(cfg, reverse, clock, px);
+  CHECK(px[2].b == 255 && px[3].b == 255 && px[0].r < 255);
+
+  // Rainbow: the four LEDs show different colours.
+  cfg.mode = LedMode::Rainbow;
+  clock.phase = 0.0f;
+  renderLeds(cfg, forward, clock, px);
+  CHECK(sameColor(px[0], 0xFF0000));
+  CHECK(!(px[0].r == px[2].r && px[0].g == px[2].g && px[0].b == px[2].b));
+
+  // Palette sweep stays inside the palette: "Fire" never shows blue.
+  cfg.mode = LedMode::PaletteSweep;
+  cfg.palette = LedPalette::Fire;
+  for (int k = 0; k < 40; ++k) {
+    clock.phase = k * 0.137f;
+    renderLeds(cfg, forward, clock, px);
+    for (const LedRgb& p : px) CHECK(p.b == 0 && p.r > 0);
+  }
 }
 
 int main() {
@@ -341,6 +470,7 @@ int main() {
   testStallDetector();
   testSkidSteer();
   testControlProtocol();
+  testLedEffects();
   printf("\n%d checks, %d failures\n", g_checks, g_failures);
   return g_failures == 0 ? 0 : 1;
 }

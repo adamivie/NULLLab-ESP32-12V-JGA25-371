@@ -46,15 +46,13 @@ constexpr int kWheelCount = 4;
 //     M1      M3
 //        REAR
 //
-// CALIBRATE: replace this block with the one printed by the `dir` wizard.
-// The invert flags below are a first guess (right-side motors are mounted
-// mirrored); the wizard confirms or corrects them.
+// Printed by the bring-up `dir` wizard on this robot; re-run it after rewiring.
 constexpr WheelHw kWheels[kWheelCount] = {
     //  name             IN1 IN2  encA encB  invMotor invEnc  isLeft
-    {"M1 rear-left",    27, 13,   19,  23,   false,   false,  true},
-    {"M2 front-left",    4,  2,    5,  18,   false,   false,  true},
-    {"M3 rear-right",   17, 12,   33,  32,   true,    false,  false},
-    {"M4 front-right",  15, 14,   26,  25,   true,    false,  false},
+    {"M1 rear-left",    27, 13,   19,  23,   false ,  false , true},
+    {"M2 front-left",    4,  2,    5,  18,   true  ,  true  , true},
+    {"M3 rear-right",   17, 12,   33,  32,   true  ,  true  , false},
+    {"M4 front-right",  15, 14,   26,  25,   true  ,  true  , false},
 };
 
 // -----------------------------------------------------------------------------
@@ -62,17 +60,19 @@ constexpr WheelHw kWheels[kWheelCount] = {
 // -----------------------------------------------------------------------------
 constexpr float kWheelDiameterM = 0.065f;
 
-// Encoder counts per WHEEL revolution in 4x mode:
-//   11 pulses x 4 edges x 9.6 gear ratio = 422.4 (nominal)
+// Encoder counts per WHEEL revolution in 4x mode, one value per port M1..M4:
+//   11 pulses x 4 edges x gear ratio (e.g. 9.6 -> 422.4)
+// The values may differ: the firmware scales each wheel so all tyres run at
+// the same surface speed. On this robot M2 has a different gearbox (~1:9.3)
+// from the other three (~1:15.5).
 // CALIBRATE with the bring-up `cal` command.
-constexpr float kCountsPerWheelRev = 422.4f;
+constexpr float kWheelCountsPerRev[kWheelCount] = {680.4f, 408.7f, 681.2f, 683.6f};
 
-// Wheel speed (counts/s) that corresponds to "100 %" in the controller. Use
-// the value suggested by the bring-up `maxspeed` command (a little below the
-// slowest wheel's full-duty speed, so every wheel can actually reach it).
-// Nominal: ~620 rpm no-load at 12 V -> 620/60*422.4 = ~4360; default leaves headroom.
+// Encoder speed (counts/s) that every MOTOR can reach at full duty. Use the
+// value suggested by the bring-up `maxspeed` command (a little below the
+// slowest motor's full-duty speed).
 // CALIBRATE.
-constexpr float kMaxWheelSpeedCps = 3900.0f;
+constexpr float kMaxWheelSpeedCps = 5220.0f;
 
 // Speed-controller gains (normalised units, see WheelSpeedController.h).
 // kS CALIBRATE with the bring-up `friction` command; the rest with `step`.
@@ -81,7 +81,7 @@ inline WheelGains wheelGains() {
   g.kP = 0.5f;
   g.kI = 6.0f;
   g.kF = 1.0f;
-  g.kS = 0.05f;
+  g.kS = 0.026f;
   g.iLimit = 0.5f;
   g.refTauS = 0.12f;
   return g;
@@ -118,7 +118,12 @@ constexpr uint8_t kPwmResolutionBits = 10;
 constexpr uint32_t kEncoderGlitchFilterNs = 2000;  // edges at top speed are ~200 us apart
 constexpr uint8_t kRgbLedPin = 16;
 constexpr uint8_t kRgbLedCount = 4;
-constexpr uint8_t kRgbLedBrightness = 40;  // 0-255
+constexpr uint8_t kRgbLedBrightness = 40;  // 0-255; status colours and the default for effects
+// Where each of the board's LEDs (in wiring order) sits on the robot, seen
+// from above: 0 = front-left, 1 = front-right, 2 = rear-right, 3 = rear-left.
+// Used by the spin and front/back light effects. Change this if "spin" does
+// not run in a circle or the front colour shows at the back.
+constexpr uint8_t kLedRingPosition[kRgbLedCount] = {0, 1, 2, 3};
 
 // -----------------------------------------------------------------------------
 // Wi-Fi. By default the robot creates its own network (works anywhere):
@@ -133,10 +138,26 @@ constexpr const char* kApPassword = "makerbot123";  // >= 8 chars; CHANGE ME
 constexpr uint8_t kApChannel = 6;
 constexpr const char* kHostname = "makerbot";       // http://makerbot.local
 constexpr uint32_t kStationConnectTimeoutMs = 12000;
+// Password for firmware updates over Wi-Fi (pio run -e robot_ota -t upload).
+// Must match upload_flags in platformio.ini. CHANGE ME (in both places).
+constexpr const char* kOtaPassword = "makerbot123";
 
 // Derived values -------------------------------------------------------------
 constexpr float kPi = 3.14159265358979f;
-constexpr float kMetersPerCount = kPi * kWheelDiameterM / kCountsPerWheelRev;
-constexpr float kMaxWheelSpeedMps = kMaxWheelSpeedCps * kMetersPerCount;
+constexpr float maxCountsPerRev() {
+  float highest = kWheelCountsPerRev[0];
+  for (int i = 1; i < kWheelCount; ++i)
+    if (kWheelCountsPerRev[i] > highest) highest = kWheelCountsPerRev[i];
+  return highest;
+}
+// "100 %" wheel speed: the fastest every wheel can turn. The wheel with the
+// most counts per revolution (highest gear ratio) sets it.
+constexpr float kMaxWheelRevPerS = kMaxWheelSpeedCps / maxCountsPerRev();
+constexpr float kMaxWheelSpeedMps = kMaxWheelRevPerS * kPi * kWheelDiameterM;
+// Encoder counts/s of wheel i at 100 % wheel speed.
+constexpr float wheelMaxCps(int i) { return kMaxWheelRevPerS * kWheelCountsPerRev[i]; }
+// Converts wheel i's normalised wheel speed to the motor-normalised units the
+// speed controller works in (1.0 = kMaxWheelSpeedCps).
+constexpr float wheelMotorScale(int i) { return wheelMaxCps(i) / kMaxWheelSpeedCps; }
 
 }  // namespace config

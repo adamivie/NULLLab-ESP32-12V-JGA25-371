@@ -25,6 +25,8 @@ DriveSystem::DriveSystem()
   status_.state = DriveState::Disarmed;
   status_.faultWheel = -1;
   status_.speedLimit = config::kDefaultSpeedLimit;
+  status_.expo = config::kStickExpo;
+  status_.turnGain = config::kTurnGain;
 }
 
 bool DriveSystem::begin() {
@@ -56,6 +58,14 @@ void DriveSystem::setSpeedLimit(float limit) {
   if (!isfinite(limit)) return;
   portENTER_CRITICAL(&lock_);
   speedLimit_ = clampf(limit, kMinSpeedLimit, 1.0f);
+  portEXIT_CRITICAL(&lock_);
+}
+
+void DriveSystem::setFeel(float expo, float turnGain) {
+  if (!isfinite(expo) || !isfinite(turnGain)) return;
+  portENTER_CRITICAL(&lock_);
+  expo_ = clampf(expo, 0.0f, 1.0f);
+  turnGain_ = clampf(turnGain, kMinTurnGain, 1.0f);
   portEXIT_CRITICAL(&lock_);
 }
 
@@ -144,6 +154,8 @@ void DriveSystem::controlStep(float dtS, int64_t nowUs, uint32_t nowMs) {
   const float turn = stickTurn_;
   const float throttle = stickThrottle_;
   const float limit = speedLimit_;
+  const float expo = expo_;
+  const float turnGain = turnGain_;
   const bool brakeNow = brakeNow_;
   brakeNow_ = false;
   portEXIT_CRITICAL(&lock_);
@@ -151,9 +163,9 @@ void DriveSystem::controlStep(float dtS, int64_t nowUs, uint32_t nowMs) {
   // --- desired side speeds (normalised) --------------------------------------
   SideSpeeds desired = {0.0f, 0.0f};
   if (state == DriveState::Armed && linkOk) {
-    const float t = shapeAxis(turn, config::kStickDeadzone, config::kStickExpo);
-    const float th = shapeAxis(throttle, config::kStickDeadzone, config::kStickExpo);
-    desired = mixArcade(th, t, config::kTurnGain);
+    const float t = shapeAxis(turn, config::kStickDeadzone, expo);
+    const float th = shapeAxis(throttle, config::kStickDeadzone, expo);
+    desired = mixArcade(th, t, turnGain);
     desired.left *= limit;
     desired.right *= limit;
   }
@@ -171,14 +183,16 @@ void DriveSystem::controlStep(float dtS, int64_t nowUs, uint32_t nowMs) {
   int stalledWheel = -1;
   bool allStopped = true;
   for (int i = 0; i < kN; ++i) {
-    const float measured =
-        estimators_[i].update(wheels_.encoder(i).count(), nowUs) / config::kMaxWheelSpeedCps;
+    // Normalised WHEEL speed (1.0 = top speed), so wheels with different
+    // gearboxes are compared like for like.
+    const float measured = estimators_[i].update(wheels_.encoder(i).count(), nowUs) / config::wheelMaxCps(i);
+    const float motorScale = config::wheelMotorScale(i);
     const float target = config::kWheels[i].isLeft ? left : right;
     if (fabsf(measured) > kStoppedSpeed) allStopped = false;
 
     float duty = 0.0f;
     if (driving && !brakeNow) {
-      duty = controllers_[i].update(target, measured, dtS);
+      duty = controllers_[i].update(target * motorScale, measured * motorScale, dtS);
       if (stallDetectors_[i].update(duty, measured, dtS) && stalledWheel < 0) stalledWheel = i;
     } else {
       controllers_[i].reset();
@@ -209,6 +223,8 @@ void DriveSystem::controlStep(float dtS, int64_t nowUs, uint32_t nowMs) {
   status_.state = state_;
   status_.linkOk = linkOk;
   status_.speedLimit = limit;
+  status_.expo = expo;
+  status_.turnGain = turnGain;
   status_.hardwareOk = hardwareOk_;
   for (int i = 0; i < kN; ++i) status_.wheels[i] = telemetry[i];
   portEXIT_CRITICAL(&lock_);

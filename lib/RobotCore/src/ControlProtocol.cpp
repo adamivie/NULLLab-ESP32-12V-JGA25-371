@@ -41,27 +41,54 @@ Message parseMessage(const char* data, size_t length) {
       float turn = 0.0f, throttle = 0.0f;
       if (!parseFloat(&cursor, &turn) || !parseFloat(&cursor, &throttle)) return invalid;
       if (!inRange(turn, -1.0f, 1.0f) || !inRange(throttle, -1.0f, 1.0f)) return invalid;
-      msg = {MessageType::Drive, turn, throttle};
+      msg.type = MessageType::Drive;
+      msg.a = turn;
+      msg.b = throttle;
       break;
     }
     case 'A': {
       float value = 0.0f;
       if (!parseFloat(&cursor, &value) || (value != 0.0f && value != 1.0f)) return invalid;
-      msg = {MessageType::Arm, value, 0.0f};
+      msg.type = MessageType::Arm;
+      msg.a = value;
       break;
     }
     case 'L': {
       float value = 0.0f;
       if (!parseFloat(&cursor, &value) || !inRange(value, kMinSpeedLimit, 1.0f)) return invalid;
-      msg = {MessageType::SpeedLimit, value, 0.0f};
+      msg.type = MessageType::SpeedLimit;
+      msg.a = value;
+      break;
+    }
+    case 'T': {
+      float expo = 0.0f, turnGain = 0.0f;
+      if (!parseFloat(&cursor, &expo) || !parseFloat(&cursor, &turnGain)) return invalid;
+      if (!inRange(expo, 0.0f, 1.0f) || !inRange(turnGain, kMinTurnGain, 1.0f)) return invalid;
+      msg.type = MessageType::Feel;
+      msg.a = expo;
+      msg.b = turnGain;
       break;
     }
     case 'S':
-      msg = {MessageType::Stop, 0.0f, 0.0f};
+      msg.type = MessageType::Stop;
       break;
     case 'C':
-      msg = {MessageType::Claim, 0.0f, 0.0f};
+      msg.type = MessageType::Claim;
       break;
+    case 'E': {
+      uint32_t fields[kLedConfigFields] = {};
+      for (uint32_t& field : fields) {
+        float value = 0.0f;
+        // Whole numbers only; a float holds every value up to 0xFFFFFF exactly.
+        if (!parseFloat(&cursor, &value) || value < 0.0f || value > 16777215.0f || value != floorf(value)) {
+          return invalid;
+        }
+        field = static_cast<uint32_t>(value);
+      }
+      if (!ledConfigFromFields(fields, &msg.leds)) return invalid;
+      msg.type = MessageType::Leds;
+      break;
+    }
     default:
       return invalid;
   }

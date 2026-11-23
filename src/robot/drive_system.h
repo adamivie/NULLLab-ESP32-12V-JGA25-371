@@ -38,6 +38,8 @@ struct DriveStatus {
   int faultWheel;  // index of the stalled wheel, -1 if none
   bool linkOk;     // joystick messages arriving
   float speedLimit;
+  float expo;      // joystick softness, 0 = linear
+  float turnGain;  // turning authority vs throttle
   WheelTelemetry wheels[config::kWheelCount];
   uint32_t loopOverruns;  // control periods that ran late (> 1.5x period)
   uint32_t maxLoopUs;     // worst-case control computation time
@@ -55,6 +57,8 @@ class DriveSystem {
   // Also acts as the heartbeat: the robot stops if these stop arriving.
   void setJoystick(float turn, float throttle);
   void setSpeedLimit(float limit);  // [kMinSpeedLimit, 1]
+  // Driving feel: expo in [0, 1] (0 = linear stick), turnGain in [kMinTurnGain, 1].
+  void setFeel(float expo, float turnGain);
 
   ArmResult arm();
   void softStop();       // ramp to zero, then disarm; also clears a fault
@@ -84,6 +88,8 @@ class DriveSystem {
   uint32_t lastCommandMs_ = 0;
   bool everCommanded_ = false;
   float speedLimit_ = config::kDefaultSpeedLimit;
+  float expo_ = config::kStickExpo;
+  float turnGain_ = config::kTurnGain;
   DriveState state_ = DriveState::Disarmed;
   bool brakeNow_ = false;  // set by emergencyStop(), consumed by the loop
   DriveStatus status_ = {};

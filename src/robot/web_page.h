@@ -50,6 +50,14 @@ input[type=range]{width:100%;accent-color:var(--blue);height:28px}
 .bar i{position:absolute;top:0;bottom:0;background:var(--blue);left:50%;width:0}
 .bar b{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--text);left:50%}
 .small{font-size:12px;color:var(--dim)}
+fieldset{border:0;margin:0;padding:0;min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+fieldset[disabled]{opacity:.5}
+fieldset>div{min-width:0}fieldset>div.wide{grid-column:1/-1}fieldset>div[hidden]{display:none}
+select,input[type=color]{width:100%;height:38px;font:inherit;color:var(--text);background:#0c0f12;border:1px solid var(--line);
+border-radius:8px;padding:0 8px}
+input[type=color]{padding:3px}
+.check{display:flex;gap:8px;align-items:center;color:var(--text);font-size:14px;margin:0;justify-content:flex-start}
+.check input{width:20px;height:20px;accent-color:var(--blue)}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;
 opacity:0;transition:opacity .2s;pointer-events:none}
 #toast.show{opacity:1}
@@ -73,10 +81,44 @@ opacity:0;transition:opacity .2s;pointer-events:none}
     <div class="card">
       <label for="lim"><span>Speed limit</span><span id="limVal">–</span></label>
       <input id="lim" type="range" min="10" max="100" step="5" value="50">
+      <label for="expo" style="margin-top:10px"><span>Stick softness (expo)</span><span id="expoVal">–</span></label>
+      <input id="expo" type="range" min="0" max="100" step="5" value="35">
+      <label for="turn" style="margin-top:10px"><span>Turn rate</span><span id="turnVal">–</span></label>
+      <input id="turn" type="range" min="20" max="100" step="5" value="65">
     </div>
     <div class="card">
       <div class="wheels" id="wheels"></div>
       <div class="small" id="info" style="margin-top:8px"></div>
+    </div>
+    <div class="card">
+      <fieldset id="leds">
+        <div class="wide"><label for="ledMode"><span>Lights</span></label>
+          <select id="ledMode">
+            <option value="0">Status colours</option>
+            <option value="1">Solid colour</option>
+            <option value="2">Pulse (fade)</option>
+            <option value="3">Blink</option>
+            <option value="4">Spin (fade)</option>
+            <option value="5">Spin (blink)</option>
+            <option value="6">Front / back colours</option>
+            <option value="7">Palette sweep</option>
+            <option value="8">Rainbow</option>
+          </select></div>
+        <div id="ledC1Box"><label for="ledC1"><span id="ledC1Name">Colour</span></label><input id="ledC1" type="color" value="#00ff40"></div>
+        <div id="ledC2Box"><label for="ledC2"><span id="ledC2Name">Second colour</span></label><input id="ledC2" type="color" value="#000000"></div>
+        <div id="ledPalBox" class="wide"><label for="ledPal"><span>Palette</span></label>
+          <select id="ledPal">
+            <option value="0">Fire</option><option value="1">Ocean</option><option value="2">Forest</option>
+            <option value="3">Sunset</option><option value="4">Party</option><option value="5">Ice</option>
+            <option value="6">My two colours</option>
+          </select></div>
+        <div id="ledSpeedBox" class="wide"><label for="ledSpeed"><span>Effect speed</span><span id="ledSpeedVal"></span></label>
+          <input id="ledSpeed" type="range" min="1" max="100" value="50"></div>
+        <div id="ledBriBox" class="wide"><label for="ledBri"><span>Brightness</span><span id="ledBriVal"></span></label>
+          <input id="ledBri" type="range" min="1" max="255" value="40"></div>
+        <div id="ledMovBox" class="wide"><label class="check"><input id="ledMov" type="checkbox" checked>Animate only while moving</label></div>
+      </fieldset>
+      <div class="small" style="margin-top:8px">Red and yellow warning blinks always show, whatever is chosen here.</div>
     </div>
     <div class="small">Keyboard: arrows / WASD to drive, Space = STOP, Enter = arm/disarm.</div>
   </section>
@@ -104,8 +146,15 @@ function send(text) { if (ws && ws.readyState === 1) ws.send(text); }
 function handle(m) {
   if (m.hello !== undefined) { myId = m.hello; maxMps = m.maxMps || 1; names = m.names || []; buildWheels(); return; }
   if (m.msg) { toast(m.msg); return; }
+  if (m.led) { if (Date.now() - ledSentAt > 1000) ledShow(m.led); return; }
   if (m.st === undefined) return;
+  if (m.st === "fault" && state !== "fault" && navigator.vibrate) navigator.vibrate([200, 100, 200]);
+  if (m.st === "armed" && state !== "armed" && navigator.vibrate) navigator.vibrate(40);
   state = m.st; owner = m.own === myId;
+  $("leds").disabled = !owner;
+  if (!limDragging && m.ex !== undefined) {
+    $("expo").value = Math.round(m.ex * 100); $("turn").value = Math.round(m.tg * 100); feelLabels();
+  }
   $("spectator").hidden = owner;
   const labels = {disarmed: ["DISARMED", "info"], armed: ["ARMED", "ok"], stopping: ["STOPPING", "warn"], fault: ["FAULT", "bad"]};
   const [txt, cls] = labels[state] || [state, ""];
@@ -214,6 +263,55 @@ lim.addEventListener("input", () => {
   $("limVal").textContent = `${lim.value}% · ${(lim.value / 100 * maxMps).toFixed(2)} m/s`;
   send(`L ${(lim.value / 100).toFixed(2)}`);
 });
+
+// ---------- driving feel ----------
+function feelLabels() {
+  const e = +$("expo").value;
+  $("expoVal").textContent = e === 0 ? "off (linear)" : e + "%";
+  $("turnVal").textContent = $("turn").value + "%";
+}
+["expo", "turn"].forEach(id => {
+  $(id).addEventListener("pointerdown", () => limDragging = true);
+  $(id).addEventListener("input", () => {
+    feelLabels(); send(`T ${($("expo").value / 100).toFixed(2)} ${($("turn").value / 100).toFixed(2)}`);
+  });
+});
+feelLabels();
+
+// ---------- lights ----------
+// Wire format (see ControlProtocol.h): E mode rgb1 rgb2 palette speed brightness movingOnly
+let ledSentAt = 0, ledTimer = null;
+const hex = n => "#" + n.toString(16).padStart(6, "0");
+function ledShow(f) {
+  $("ledMode").value = f[0]; $("ledC1").value = hex(f[1]); $("ledC2").value = hex(f[2]); $("ledPal").value = f[3];
+  $("ledSpeed").value = f[4]; $("ledBri").value = f[5]; $("ledMov").checked = !!f[6];
+  ledLayout();
+}
+function ledLayout() {
+  // Show only the controls the chosen effect uses.
+  const mode = +$("ledMode").value, custom = mode === 7 && +$("ledPal").value === 6;
+  $("ledC1Box").hidden = !([1, 2, 3, 4, 5, 6].includes(mode) || custom);
+  $("ledC2Box").hidden = !([3, 4, 5, 6].includes(mode) || custom);
+  $("ledC1Name").textContent = mode === 6 ? "Front colour" : "Colour";
+  $("ledC2Name").textContent = mode === 6 ? "Back colour" : "Second colour";
+  $("ledPalBox").hidden = mode !== 7;
+  const animated = [2, 3, 4, 5, 7, 8].includes(mode);
+  $("ledSpeedBox").hidden = $("ledMovBox").hidden = !animated;
+  $("ledBriBox").hidden = mode === 0;
+  $("ledSpeedVal").textContent = $("ledSpeed").value + "%";
+  $("ledBriVal").textContent = Math.round($("ledBri").value / 2.55) + "%";
+}
+function ledSend() {
+  ledLayout();
+  if (ledTimer) return;  // colour pickers fire constantly: send at most ~12x per second
+  ledTimer = setTimeout(() => {
+    ledTimer = null; ledSentAt = Date.now();
+    send("E " + [+$("ledMode").value, parseInt($("ledC1").value.slice(1), 16), parseInt($("ledC2").value.slice(1), 16),
+      +$("ledPal").value, +$("ledSpeed").value, +$("ledBri").value, $("ledMov").checked ? 1 : 0].join(" "));
+  }, 80);
+}
+["ledMode", "ledC1", "ledC2", "ledPal", "ledSpeed", "ledBri", "ledMov"].forEach(id => $(id).addEventListener("input", ledSend));
+ledLayout();
 
 // Joystick stream = heartbeat. If this page is hidden (phone locked, app
 // switched) the stream stops and the robot halts by itself; we also ask for a

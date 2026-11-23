@@ -9,3 +9,5 @@ hardware/chassis/.venv/
 hardware/chassis/out/robot_full.*
 hardware/chassis/out/_maker-esp32.step
 hardware/chassis/__pycache__/
+# Written by the PlatformIO IDE extension
+.gitignore.optional
