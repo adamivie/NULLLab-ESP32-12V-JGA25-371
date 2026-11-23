@@ -22,6 +22,9 @@ on slopes and as the battery drains.
   - It stops by itself if the phone goes quiet (0.5 s) and disarms after 3 s.
   - **STOP** works from any connected device; only one device drives at a time.
   - **Stall detection** brakes all motors if a wheel is jammed.
+  - **Battery protection** with a Holybro PM02 power module: voltage, current
+    and charge used on the phone; a low battery caps speed, a flat one stops
+    the robot and won't let it arm.
   - Acceleration and deceleration ramps mean the gearboxes never see an
     instant reversal, as the motor datasheet warns against.
 - **Bring-up tool**: a serial wizard that works out which port drives which
@@ -58,8 +61,10 @@ Power the encoders (blue = +, black = GND) from **3.3 V**. Measure it first,
 because the docs disagree. Put the Motor/IO DIP switch on **Motor**, and
 connect a 3S LiPo or 12 V pack to the DC jack.
 
-The board can't measure battery voltage, so put a cheap **LiPo voltage alarm**
-on the battery's balance lead. Running a LiPo flat ruins it.
+The board can't measure battery voltage by itself, so put a **Holybro PM02**
+power module in the battery lead and wire its VOLTAGE and CURRENT signals to
+GPIO 34 and 35 ([details](docs/WIRING.md#5-battery-monitor-holybro-pm02-v3)).
+Running a LiPo flat ruins it.
 
 ## 2. Install the tools
 
@@ -92,6 +97,8 @@ Prop the robot up so the wheels spin freely, then run these in order:
 | `maxspeed` | Full duty for 2 s | `kMaxWheelSpeedCps` |
 | `friction` | Finds the duty where each wheel starts moving | `g.kS` |
 | `step 0 50` | Closed-loop step test on all wheels, with a summary and CSV | gains, only if needed |
+| `batt` | Live PM02 voltage and current; compare with a multimeter | – |
+| `batt cal 12.34` | Calibrates the voltage scale to your meter reading | `kBatteryVoltsPerVolt` |
 
 Any key aborts a running test. The default gains came from simulating these
 motors, so `step` is mostly a check. To tune, run `gains <kp> <ki>` and repeat
@@ -126,6 +133,8 @@ can't connect, it falls back to its own network.
 | Green | **Armed**: the robot will move |
 | Yellow, blinking | Armed but the phone link dropped; the robot is stopping |
 | Red, blinking | Fault (stalled wheel or hardware error); press RESET in the app |
+| Amber | Disarmed with a **low battery**: recharge soon |
+| Red, slow pulse | **Battery flat**: the robot won't arm; replace or recharge it |
 
 ## Configuration
 
@@ -137,6 +146,7 @@ All settings are in **[`include/robot_config.h`](include/robot_config.h)**:
 - controller gains
 - driving feel (expo, turn rate, acceleration)
 - safety timeouts
+- battery monitor (pins, scale, cell count, thresholds)
 - Wi-Fi
 
 ## Project layout
@@ -145,10 +155,10 @@ All settings are in **[`include/robot_config.h`](include/robot_config.h)**:
 include/robot_config.h      all settings (start here)
 src/robot/                  robot firmware: drive task, web server, page, LEDs
 src/bringup/                serial bring-up & calibration tool
-src/common/                 motor + encoder set shared by both firmwares
+src/common/                 motor + encoder set and PM02 battery reader, shared by both firmwares
 lib/RobotCore/              hardware-independent logic (unit-tested on PC):
                             speed controller, ramps, joystick mixing,
-                            stall detection, message parser
+                            stall detection, battery monitor, message parser
 lib/RobotHw/                TB67H450FNG motor driver, PCNT quadrature encoder
 host_tests/                 unit tests for RobotCore     -> host_tests/run.sh
 tools/ui_test/              browser test of the web page -> tools/ui_test/run.sh
@@ -177,4 +187,6 @@ GitHub Actions runs all three on every push (`.github/workflows/ci.yml`).
 | Robot drives in circles | Re-run `dir`; check `isLeft` and the directions in `kWheels` |
 | Stall fault when driving normally | The wheel really is overloaded; or raise `kStallDuty` / `kStallTimeS` |
 | Page won't load | Phone joined the robot's Wi-Fi? Some phones leave a network with no internet; choose "stay connected" |
+| Battery shows "no batt" | Running on USB only, or PM02 VOLTAGE (pin 4) not on GPIO 34 / GND not connected; run `batt` |
+| Voltage reads wrong | `batt cal <meter volts>` in the bring-up firmware |
 | Upload fails | Hold BOOT while the upload starts, or lower `upload_speed` in `platformio.ini` |

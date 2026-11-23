@@ -17,6 +17,7 @@
 #include <Arduino.h>
 #include <math.h>
 
+#include "../common/battery_sensor.h"
 #include "../common/wheel_set.h"
 #include "VelocityEstimator.h"
 #include "WheelSpeedController.h"
@@ -26,6 +27,7 @@ namespace {
 
 constexpr int kN = config::kWheelCount;
 WheelSet wheels;
+BatterySensor battery;
 WheelGains gains = config::wheelGains();
 
 // --- serial helpers ---------------------------------------------------------
@@ -149,9 +151,69 @@ Commands (any key aborts a running test):
   friction                breakaway duty -> kS          [wheels off ground]
   step <0-4> <pct> [ms]   closed-loop step response, 0 = all wheels [wheels off ground]
   gains [kp ki kf ks tau] show / set controller gains used by `step`
+  batt                    live PM02 battery voltage / current readout
+  batt cal <volts>        calibrate the voltage scale against a multimeter reading
   stop                    brake all motors
   help                    this text
 Suggested order on a new robot: enc, dir, cal, maxspeed, friction, step)");
+}
+
+void cmdBatt(const String& args) {
+  if (!battery.enabled()) {
+    Serial.println("Battery monitor is disabled (kBatteryMonitorEnabled in robot_config.h).");
+    return;
+  }
+  if (args.startsWith("cal")) {
+    const float measured = args.substring(3).toFloat();
+    if (!(measured > 3.0f && measured < 30.0f)) {
+      Serial.println("usage: batt cal <volts>   e.g. batt cal 12.34  (battery voltage measured with a multimeter)");
+      return;
+    }
+    // Average 2 s of readings with the motors idle.
+    uint64_t sum = 0;
+    int n = 0;
+    for (uint32_t start = millis(); millis() - start < 2000; ++n) {
+      battery.sample(millis());
+      sum += battery.rawVoltageMv();
+      delay(20);
+    }
+    const float pinV = static_cast<float>(sum) / static_cast<float>(n) * 0.001f;
+    if (pinV < 0.1f) {
+      Serial.printf("!! Voltage pin GPIO %u reads %.0f mV - check the PM02 VOLTAGE wire and GND.\n",
+                    config::kBatteryVoltagePin, pinV * 1000.0f);
+      return;
+    }
+    const float scale = measured / pinV;
+    Serial.printf("Pin %.1f mV, meter %.2f V -> scale %.3f (Holybro nominal 18.182, now %.3f)\n", pinV * 1000.0f,
+                  measured, scale, config::kBatteryVoltsPerVolt);
+    if (fabsf(scale / 18.182f - 1.0f) > 0.15f)
+      Serial.println("!! More than 15% off nominal - check the wiring (pin 4 = VOLTAGE) before trusting this.");
+    Serial.println("\n==== Paste into include/robot_config.h ====");
+    Serial.printf("constexpr float kBatteryVoltsPerVolt = %.3ff;\n", scale);
+    return;
+  }
+
+  Serial.printf("PM02 on GPIO %u (voltage) / %u (current). Press any key to stop.\n", config::kBatteryVoltagePin,
+                config::kBatteryCurrentPin);
+  Serial.println("Compare the pack voltage with a multimeter; then run `batt cal <volts>` if it is off.");
+  uint32_t lastPrint = 0;
+  while (!userAborted()) {
+    const uint32_t now = millis();
+    battery.sample(now);
+    if (now - lastPrint >= 250) {
+      lastPrint = now;
+      const BatteryMonitor& m = battery.monitor();
+      const char* level = "absent";
+      if (m.level() == BatteryLevel::Ok) level = "ok";
+      else if (m.level() == BatteryLevel::Low) level = "LOW";
+      else if (m.level() == BatteryLevel::Critical) level = "CRITICAL";
+      Serial.printf("pins %4u / %4u mV  ->  %6.2f V  %6.2f A   filtered %6.2f V  %dS %4.2f V/cell  %3d%%  %s\n",
+                    static_cast<unsigned>(battery.rawVoltageMv()), static_cast<unsigned>(battery.rawCurrentMv()),
+                    battery.instantVolts(), battery.instantAmps(), m.volts(), m.cells(), m.cellVolts(), m.percent(),
+                    level);
+    }
+    delay(20);
+  }
 }
 
 void cmdEnc() {
@@ -547,6 +609,7 @@ void handleCommand(String line) {
   else if (cmd == "friction") cmdFriction();
   else if (cmd == "step") cmdStep(args);
   else if (cmd == "gains") cmdGains(args);
+  else if (cmd == "batt") cmdBatt(args);
   else if (cmd == "stop") wheels.brakeAll();
   else Serial.printf("unknown command '%s' - type help\n", cmd.c_str());
   wheels.brakeAll();
@@ -561,6 +624,7 @@ void setup() {
   Serial.println("Motors need 6-16 V on the DC jack with the power switch ON.");
   Serial.println("Ports M3/M4 also need the Motor/IO DIP switch on the MOTOR side.");
   if (!wheels.begin()) Serial.println("!! Hardware setup reported errors (see above).");
+  battery.begin();
   Serial.printf("Config: %.1f counts/rev, max %.0f counts/s (%.2f m/s)\n", config::kCountsPerWheelRev,
                 config::kMaxWheelSpeedCps, config::kMaxWheelSpeedMps);
   cmdHelp();

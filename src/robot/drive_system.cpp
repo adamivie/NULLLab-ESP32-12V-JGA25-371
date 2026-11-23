@@ -59,6 +59,12 @@ void DriveSystem::setSpeedLimit(float limit) {
   portEXIT_CRITICAL(&lock_);
 }
 
+void DriveSystem::setBatteryLevel(BatteryLevel level) {
+  portENTER_CRITICAL(&lock_);
+  battery_ = level;
+  portEXIT_CRITICAL(&lock_);
+}
+
 bool DriveSystem::stickCentredLocked() const {
   return shapeAxis(stickTurn_, config::kStickDeadzone, 0.0f) == 0.0f &&
          shapeAxis(stickThrottle_, config::kStickDeadzone, 0.0f) == 0.0f;
@@ -72,6 +78,8 @@ ArmResult DriveSystem::arm() {
     result = ArmResult::HardwareError;  // never drive half-initialised hardware
   } else if (state_ == DriveState::Fault) {
     result = ArmResult::Faulted;
+  } else if (battery_ == BatteryLevel::Critical) {
+    result = ArmResult::BatteryCritical;
   } else if (!everCommanded_ || now - lastCommandMs_ > config::kCommandTimeoutMs) {
     result = ArmResult::NoLink;
   } else if (!stickCentredLocked()) {
@@ -140,10 +148,14 @@ void DriveSystem::controlStep(float dtS, int64_t nowUs, uint32_t nowMs) {
   if (!everCommanded_ || sinceCommandMs > config::kLinkLostDisarmMs) {
     if (state_ == DriveState::Armed) state_ = DriveState::Stopping;
   }
+  if (battery_ == BatteryLevel::Critical && state_ == DriveState::Armed) state_ = DriveState::Stopping;
+  const bool batteryCapped = battery_ == BatteryLevel::Low || battery_ == BatteryLevel::Critical;
   DriveState state = state_;
   const float turn = stickTurn_;
   const float throttle = stickThrottle_;
   const float limit = speedLimit_;
+  const float effectiveLimit =
+      batteryCapped && limit > config::kBatteryLowSpeedLimit ? config::kBatteryLowSpeedLimit : limit;
   const bool brakeNow = brakeNow_;
   brakeNow_ = false;
   portEXIT_CRITICAL(&lock_);
@@ -154,8 +166,8 @@ void DriveSystem::controlStep(float dtS, int64_t nowUs, uint32_t nowMs) {
     const float t = shapeAxis(turn, config::kStickDeadzone, config::kStickExpo);
     const float th = shapeAxis(throttle, config::kStickDeadzone, config::kStickExpo);
     desired = mixArcade(th, t, config::kTurnGain);
-    desired.left *= limit;
-    desired.right *= limit;
+    desired.left *= effectiveLimit;
+    desired.right *= effectiveLimit;
   }
 
   const bool driving = state == DriveState::Armed || state == DriveState::Stopping;
@@ -209,6 +221,7 @@ void DriveSystem::controlStep(float dtS, int64_t nowUs, uint32_t nowMs) {
   status_.state = state_;
   status_.linkOk = linkOk;
   status_.speedLimit = limit;
+  status_.batteryCapped = batteryCapped && limit > config::kBatteryLowSpeedLimit;
   status_.hardwareOk = hardwareOk_;
   for (int i = 0; i < kN; ++i) status_.wheels[i] = telemetry[i];
   portEXIT_CRITICAL(&lock_);
